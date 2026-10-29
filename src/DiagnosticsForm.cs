@@ -11,6 +11,7 @@ internal sealed class DiagnosticsForm : Form
     private readonly FlowLayoutPanel buttons = new() { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
     private readonly CancellationTokenSource closed = new();
     private readonly DiagnosticHistory history = new();
+    private readonly Button integration;
     private HealthSnapshot? snapshot;
     private LaunchResult[] recent = [];
     private bool historyAvailable;
@@ -26,9 +27,11 @@ internal sealed class DiagnosticsForm : Form
         checks.Columns.Add("Check", 165); checks.Columns.Add("Status", 90); checks.Columns.Add("Message / next step", 760);
         launches.Columns.Add("Started (local)", 165); launches.Columns.Add("Source", 95); launches.Columns.Add("Result", 100); launches.Columns.Add("Message", 650);
         layout.Controls.Add(status, 0, 0); layout.Controls.Add(checks, 0, 1);
-        layout.Controls.Add(new Label { Text = "Recent launches — up to 100 attempts / 30 days. Select a row for details; Refresh reloads results.", AutoSize = true }, 0, 2);
+        layout.Controls.Add(new Label { Text = "Recent launches — up to 100 attempts / 30 days. Select a row for details; Check again reloads results.", AutoSize = true }, 0, 2);
         layout.Controls.Add(launches, 0, 3); layout.Controls.Add(detail, 0, 4); layout.Controls.Add(buttons, 0, 5); Controls.Add(layout);
-        AddButton("&Refresh", RefreshAsync); AddButton("&Test worker", TestAsync); AddButton("&Repair", () => InstallerAsync("--repair"));
+        AddButton("&Check again", RefreshAsync); AddButton("&Test worker", TestAsync); AddButton("&Recover/Repair", () => InstallerAsync("--recover"));
+        integration = AddButton("Disable browser integration", () => InstallerAsync(snapshot?.BrowserIntegrationEnabled == false ? "--enable-browser-integration" : "--disable-browser-integration"));
+        integration.Enabled = false;
         AddButton("&Setup", () => InstallerAsync("--setup")); AddButton("&Export report", ExportAsync); AddButton("&Clear history", ClearAsync);
         AddButton("User &logs", () => OpenLogsAsync(0)); AddButton("&Worker logs", () => OpenLogsAsync(1)); AddButton("Setup l&ogs", () => OpenLogsAsync(2));
         checks.SelectedIndexChanged += (_, _) => { if (checks.SelectedItems.Count > 0) detail.Text = checks.SelectedItems[0].Tag as string ?? ""; };
@@ -36,10 +39,11 @@ internal sealed class DiagnosticsForm : Form
         if (collectOnShown) Shown += async (_, _) => await RunAsync(RefreshAsync);
         FormClosed += (_, _) => closed.Cancel();
     }
-    private void AddButton(string text, Func<Task> action)
+    private Button AddButton(string text, Func<Task> action)
     {
         var button = new Button { Text = text, AutoSize = true, Margin = new Padding(4) };
         button.Click += async (_, _) => await RunAsync(action); buttons.Controls.Add(button);
+        return button;
     }
     private async Task RunAsync(Func<Task> action)
     {
@@ -68,6 +72,8 @@ internal sealed class DiagnosticsForm : Form
     internal void Present(HealthSnapshot health, LaunchResult[] records, bool available)
     {
         snapshot = health; historyAvailable = available; recent = records; worker = health.WorkerTest;
+        integration.Text = health.BrowserIntegrationEnabled == false ? "Enable browser integration" : "Disable browser integration";
+        integration.Enabled = health.BrowserIntegrationEnabled is not null;
         status.Text = $"Configuration: {snapshot.Overall} • checked {snapshot.CollectedUtc.LocalDateTime:g}. Worker test: {worker.State}.\n" +
             "Idle is normal. These checks do not verify sign-in or in-game success. Registry checks describe this process's view; Setup/Repair verifies Windows context separately.";
         checks.Items.Clear();
@@ -102,7 +108,7 @@ internal sealed class DiagnosticsForm : Form
         using var process = Process.Start(start) ?? throw new IOException();
         await process.WaitForExitAsync(closed.Token);
         bool canceled = process.ExitCode == 1223;
-        if (!canceled && process.ExitCode != 0) MessageBox.Show(this, "Setup/Repair did not complete. Check setup logs.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        if (!canceled && process.ExitCode != 0) MessageBox.Show(this, "The installation action did not complete. Check setup logs and run Check again.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         await RefreshAsync();
         if (!IsDisposed && canceled) detail.Text = "Administrator approval was canceled. No repair failure was recorded.";
     }

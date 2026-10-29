@@ -25,7 +25,7 @@ internal static class DiagnosticReports
     private static readonly HashSet<string> EventCodes = ["launch-requested", "roblox-launched", "launch-warning", "worker-unavailable", "worker-result-failed",
         "worker-started", "worker-exited", "worker-client-failed", "singleton-closed", "close-result-uncertain", "process-access-denied", "roblox-signature-rejected",
         "scan-process-failed", "probe-start", "probe-complete", "setup-probe-failed", "setup-context", "setup-stage", "setup-complete", "setup-rollback",
-        "protocol-registration-verified", "limited-probe-result", "operation-failed"];
+        "protocol-registration-verified", "limited-probe-result", "operation-failed", "recovery-complete", "recovery-rolled-back", "recovery-rollback-conflict"];
     private static string Version(string input) => Regex.IsMatch(input ?? "", @"\A[0-9]{1,5}(\.[0-9]{1,5}){1,3}\z", RegexOptions.CultureInvariant) ? input! : "unknown";
     private static ReportCheck Sanitize(HealthCheckResult c) => new(CheckIds.Contains(c.Id) ? c.Id : "unknown",
         Enum.IsDefined(c.State) ? c.State.ToString() : "Unknown", Enum.IsDefined(c.Code) ? c.Code.ToString() : "InspectionUnavailable",

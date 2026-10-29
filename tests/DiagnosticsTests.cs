@@ -172,12 +172,17 @@ internal static class DiagnosticsTests
             var snapshot = Snapshot(
                 DiagnosticChecks.Result("installation", CheckState.Healthy, DiagnosticCode.Ready),
                 DiagnosticChecks.Result("protocol-roblox-player", CheckState.Failed, DiagnosticCode.ProtocolMismatch, Remediation.Repair),
-                DiagnosticChecks.Result("history", CheckState.Healthy, DiagnosticCode.Ready));
+                DiagnosticChecks.Result("history", CheckState.Healthy, DiagnosticCode.Ready)) with { BrowserIntegrationEnabled = false };
             form.Present(snapshot, [Record() with { Outcome = LaunchOutcome.Confirmed, Code = DiagnosticCode.LaunchConfirmed, RobloxStarted = true },
                 Record(Now.AddMinutes(-1)) with { Outcome = LaunchOutcome.Warning, Code = DiagnosticCode.WorkerTimeout, RobloxStarted = true }], true);
             form.Show(); form.PerformLayout();
             var lists = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<ListView>().ToArray();
             Check(lists[0].Items.Count == 4 && lists[1].Items.Count == 2);
+            var toggle = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>()
+                .Single(b => b.Text.Contains("browser integration"));
+            Check(toggle.Enabled && toggle.Text == "Enable browser integration");
+            form.Present(snapshot with { BrowserIntegrationEnabled = true }, [], true);
+            Check(toggle.Enabled && toggle.Text == "Disable browser integration");
             string output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build")); Directory.CreateDirectory(output);
             using var bitmap = new Bitmap(form.Width, form.Height); form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
             bitmap.Save(Path.Combine(output, "dashboard-preview.png"));

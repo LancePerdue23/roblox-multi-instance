@@ -1,5 +1,4 @@
 using Microsoft.Win32;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -48,13 +47,19 @@ internal sealed class InstallConfig
     public string OwnerSid { get; set; } = "";
     public Dictionary<string, string> Commands { get; set; } = [];
     public Dictionary<string, RegistryTree?> Backups { get; set; } = [];
+    public bool BrowserIntegrationEnabled { get; set; } = true;
+    public Dictionary<string, RegistryTree?> OriginalBackups { get; set; } = [];
+    public Dictionary<string, RegistryTree> WrittenProtocols { get; set; } = [];
+    public List<ProtocolEdit> PendingChanges { get; set; } = [];
+    public bool? PendingPreviousEnabled { get; set; }
+    public Dictionary<string, string?> ExpectedProtocols { get; set; } = [];
 }
 
-internal static class Installation
+internal static partial class Installation
 {
     internal static readonly string[] Schemes = ["roblox-player", "roblox"];
     internal static string WrapperCommand => $"\"{Program.InstalledExe}\" \"%1\"";
-    private static string ProtocolPath(string scheme) => @"Software\Classes\" + scheme;
+    internal static string ProtocolPath(string scheme) => @"Software\Classes\" + scheme;
     internal static InstallConfig ReadConfig()
     {
         var config = JsonSerializer.Deserialize<InstallConfig>(File.ReadAllText(Program.ConfigPath)) ?? throw new InvalidOperationException("Installation settings are missing. Run Repair.");
@@ -65,7 +70,9 @@ internal static class Installation
     internal static string? CurrentCommand(string scheme)
     {
         using var key = Registry.CurrentUser.OpenSubKey(ProtocolPath(scheme) + @"\shell\open\command");
-        return key?.GetValue("") as string;
+        if (key?.GetValue("") is { } value) return value as string ?? "";
+        using var machine = Registry.LocalMachine.OpenSubKey(ProtocolPath(scheme) + @"\shell\open\command");
+        return machine?.GetValue("") as string;
     }
     internal static void VerifyReadOnly()
     {
@@ -91,9 +98,9 @@ internal static class Installation
 
     internal static int ExecuteInWindowsContext(string action, string owner)
     {
-        if (!Program.Elevated || owner != Program.Sid || action is not ("setup" or "repair" or "uninstall"))
+        if (!Program.Elevated || owner != Program.Sid || !IsAction(action))
             throw new InvalidOperationException("Invalid installer action or Windows account.");
-        if (action == "uninstall" && !File.Exists(Program.ConfigPath))
+        if (action != "setup" && !File.Exists(Program.ConfigPath))
             throw new UserError("No installation was found for this Windows account.");
         // A Windows-scheduled process sees the same user registry as Explorer/Chrome,
         // including when setup was started from an environment with an isolated hive.
@@ -104,97 +111,9 @@ internal static class Installation
         foreach (string file in Directory.EnumerateFiles(Program.InstallDirectory)) ProtectFile(file);
         Log.Write("setup-context", "dispatch-windows-process");
         int result = ScheduledWorker.RunCleanInstallerTask(action);
+        if (result == 1223) return result;
         if (result != 0) throw new UserError("Setup did not finish successfully. Check the installed logs and setup logs for details.");
         return result;
-    }
-
-    internal static void VerifyProtocolRegistration()
-    {
-        foreach (string scheme in Schemes)
-            if (!IsWrapper(CurrentCommand(scheme)))
-                throw new InvalidOperationException("The Windows browser launch registration was not applied.");
-    }
-
-    internal static void Execute(string action, string owner)
-    {
-        if (!Program.Elevated || owner != Program.Sid) throw new InvalidOperationException("Setup needs administrator access from this Windows account.");
-        if (action == "uninstall") { Uninstall(); return; }
-        if (action is not ("setup" or "repair")) throw new InvalidOperationException("Unknown setup action.");
-        bool existing = File.Exists(Program.ConfigPath);
-        var config = existing ? ReadConfig() : new InstallConfig { OwnerSid = owner };
-        var before = new Dictionary<string, RegistryTree?>();
-        foreach (string scheme in Schemes)
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(ProtocolPath(scheme));
-            before[scheme] = key is null ? null : RegistryTree.Capture(key);
-            string? command = CurrentCommand(scheme);
-            if (!IsWrapper(command) && command is not null)
-            {
-                var start = Launch.BuildStart(command, null);
-                if (!File.Exists(start.FileName) || !RobloxTrust.IsSignedRoblox(start.FileName))
-                    throw new UserError("The registered Roblox player could not be found or verified. Install or launch official Roblox normally, then run Setup/Repair again.");
-                config.Commands[scheme] = command;
-                // On repair, retain the latest real registration rather than a stale pre-update path.
-                config.Backups[scheme] = before[scheme];
-            }
-            else if (!existing) config.Backups[scheme] = before[scheme];
-        }
-        if (!config.Commands.TryGetValue("roblox-player", out var player))
-            throw new UserError("No official Roblox browser-launch registration was found. Install Roblox first.");
-        foreach (string scheme in Schemes) config.Commands.TryAdd(scheme, player);
-        foreach (string command in config.Commands.Values)
-        {
-            var start = Launch.BuildStart(command, null);
-            if (!File.Exists(start.FileName) || !RobloxTrust.IsSignedRoblox(start.FileName))
-                throw new UserError("The saved Roblox executable is missing or could not be verified. Reinstall Roblox normally, then run Repair again.");
-        }
-
-        ProtectDirectory(Program.InstallRoot, true);
-        ProtectDirectory(Program.InstallDirectory, false);
-        RejectReparseTree(Program.InstallDirectory);
-        bool registered = false, protocolsChanged = false;
-        string? previousConfig = existing ? File.ReadAllText(Program.ConfigPath) : null;
-        try
-        {
-            Log.Write("setup-stage", "copy-payload");
-            CopyPayload();
-            File.WriteAllText(Program.ConfigPath, JsonSerializer.Serialize(config, Program.JsonOptions));
-            foreach (string file in Directory.EnumerateFiles(Program.InstallDirectory)) ProtectFile(file);
-            Log.Write("setup-stage", "register-task");
-            ScheduledWorker.Register(); registered = true;
-            // Actual filtered-token verification: no game launch and no handles closed.
-            Log.Write("setup-stage", "verify-normal-token");
-            if (RunUnelevated("--verify", TimeSpan.FromSeconds(35)) != 0)
-                throw new UserError("The helper could not be started from a normal Windows token. Setup was rolled back. Check Task Scheduler permissions and diagnostics.");
-            Log.Write("setup-stage", "register-protocols");
-            protocolsChanged = true;
-            foreach (string scheme in Schemes) RegisterProtocol(scheme);
-            ShellAssociations.NotifyChanged();
-            if (RunUnelevated("--verify-protocols", TimeSpan.FromSeconds(15)) != 0)
-                throw new UserError("Windows did not confirm the browser launch registration. Setup was rolled back.");
-            if (RunUnelevated("--shortcuts install", TimeSpan.FromSeconds(15)) != 0)
-                throw new UserError("Shortcut setup failed. Setup was rolled back.");
-            Log.Write("setup-complete");
-            MessageBox.Show("Roblox Launch Helper is ready. Use browser Play buttons or the Roblox Multi Instance desktop shortcut.\n\nThere is no startup watcher. Repair and Uninstall are available in the Start menu.",
-                "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (Exception setupError)
-        {
-            Log.Write("setup-rollback", setupError.GetType().Name + (setupError is Win32Exception native ? ":win32=" + native.NativeErrorCode : ""), setupError.HResult);
-            if (protocolsChanged)
-            {
-                foreach (string scheme in Schemes) RestoreProtocol(scheme, before[scheme]);
-                ShellAssociations.NotifyChanged();
-            }
-            if (registered)
-            {
-                if (existing) ScheduledWorker.Register(); else ScheduledWorker.Remove();
-            }
-            if (previousConfig is not null) File.WriteAllText(Program.ConfigPath, previousConfig);
-            else if (File.Exists(Program.ConfigPath)) File.Delete(Program.ConfigPath);
-            if (!existing && Directory.Exists(Program.InstallDirectory)) ScheduleCleanup();
-            throw;
-        }
     }
 
     private static void ProtectDirectory(string path, bool root)
@@ -252,29 +171,16 @@ internal static class Installation
         new FileInfo(path).SetAccessControl(security);
     }
 
-    private static void RegisterProtocol(string scheme)
-    {
-        using var key = Registry.CurrentUser.CreateSubKey(ProtocolPath(scheme));
-        key.SetValue("", "URL:Roblox Protocol"); key.SetValue("URL Protocol", "");
-        using var command = key.CreateSubKey(@"shell\open\command");
-        command.SetValue("", WrapperCommand);
-    }
-
     internal static void RestoreTree(RegistryKey parent, string name, RegistryTree? tree)
     {
         parent.DeleteSubKeyTree(name, false);
         if (tree is not null) { using var restored = parent.CreateSubKey(name); tree.Restore(restored); }
     }
-
-    private static void RestoreProtocol(string scheme, RegistryTree? tree) => RestoreTree(Registry.CurrentUser, ProtocolPath(scheme), tree);
-
     private static void Uninstall()
     {
         if (!File.Exists(Program.ConfigPath)) throw new UserError("No installation was found for this Windows account.");
-        var config = ReadConfig();
+        _ = ReadConfig();
         ScheduledWorker.Remove();
-        foreach (string scheme in Schemes)
-            if (IsWrapper(CurrentCommand(scheme))) RestoreProtocol(scheme, config.Backups.GetValueOrDefault(scheme));
         ShellAssociations.NotifyChanged();
         RunUnelevated("--shortcuts remove", TimeSpan.FromSeconds(15));
         ScheduleCleanup();

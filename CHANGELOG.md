@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add explicit update-aware player recovery and a persistent browser-integration toggle without background monitoring.
+- Retain original protocol backups and use conditional value restoration with a persisted interruption journal to preserve other installers' changes.
+
 - Add a local Diagnostics dashboard with explicit worker testing and existing Setup/Repair actions.
 - Record bounded recent-launch outcomes and export allowlisted troubleshooting ZIPs without raw logs or identifying launch data.
 - Preserve silent launches and the on-demand worker lifecycle; remove raw setup stack traces from future logs.

@@ -18,6 +18,16 @@ internal static class DiagnosticChecks
         catch (Exception e) { return Result(id, CheckState.Unknown, DiagnosticCode.InspectionUnavailable, Remediation.Refresh, e.HResult); }
     }
     internal static bool ProtocolMatches(string? command) => string.Equals(command, Installation.WrapperCommand, StringComparison.OrdinalIgnoreCase);
+    internal static HealthCheckResult CheckProtocol(string id, string? command, bool enabled, Func<string, bool>? exists = null, Func<string, bool>? trusted = null)
+    {
+        if (ProtocolMatches(command)) return Result(id, enabled ? CheckState.Healthy : CheckState.Failed,
+            enabled ? DiagnosticCode.Ready : DiagnosticCode.ProtocolMismatch, enabled ? Remediation.None : Remediation.Repair);
+        if (string.IsNullOrWhiteSpace(command)) return Result(id, CheckState.Failed, DiagnosticCode.ProtocolMissing, Remediation.Repair);
+        var player = CheckPlayer(id, command, exists, trusted);
+        if (enabled) return player.State == CheckState.Healthy
+            ? Result(id, CheckState.Failed, DiagnosticCode.ProtocolChanged, Remediation.Repair) : player;
+        return player.State == CheckState.Healthy ? Result(id, CheckState.Healthy, DiagnosticCode.IntegrationDisabled) : player;
+    }
     internal static DiagnosticCode ConfigStatus(InstallConfig? config)
     {
         if (config is null || config.Version != 1 || config.Commands is null || Installation.Schemes.Any(s => !config.Commands.TryGetValue(s, out var command) || string.IsNullOrWhiteSpace(command))) return DiagnosticCode.InvalidConfig;
@@ -46,7 +56,9 @@ internal static class DiagnosticChecks
             catch (JsonException) { return Result("installation", CheckState.Failed, DiagnosticCode.InvalidConfig, Remediation.Repair); }
             var code = ConfigStatus(config);
             if (code != DiagnosticCode.Ready) { config = null; return Result("installation", CheckState.Failed, code, code == DiagnosticCode.InvalidConfig ? Remediation.Repair : Remediation.None); }
-            return Result("installation", CheckState.Healthy, DiagnosticCode.Ready);
+            return config!.PendingPreviousEnabled is not null
+                ? Result("installation", CheckState.Failed, DiagnosticCode.RecoveryPending, Remediation.Repair)
+                : Result("installation", CheckState.Healthy, DiagnosticCode.Ready);
         }));
         checks.Add(Inspect("helper", () =>
         {
@@ -68,9 +80,8 @@ internal static class DiagnosticChecks
             }));
             checks.Add(Inspect("protocol-" + scheme, () =>
             {
-                bool matches = ProtocolMatches(Installation.CurrentCommand(scheme));
-                return Result("protocol-" + scheme, matches ? CheckState.Healthy : CheckState.Failed,
-                    matches ? DiagnosticCode.Ready : DiagnosticCode.ProtocolMismatch, matches ? Remediation.None : Remediation.Repair);
+                if (config is null) return Result("protocol-" + scheme, CheckState.Unknown, DiagnosticCode.InvalidConfig, Remediation.Repair);
+                return CheckProtocol("protocol-" + scheme, Installation.CurrentCommand(scheme), config.BrowserIntegrationEnabled);
             }));
         }
         checks.Add(Inspect("task", InspectTask));
@@ -92,7 +103,7 @@ internal static class DiagnosticChecks
         bool logsOk = DiagnosticReports.LogDirectories.All(Directory.Exists);
         checks.Add(Result("logs", logsOk ? CheckState.Healthy : CheckState.Warning, logsOk ? DiagnosticCode.Ready : DiagnosticCode.LogsUnavailable, Remediation.OpenLogs));
         return new(1, typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown", Environment.OSVersion.Version.ToString(),
-            RuntimeInformation.ProcessArchitecture.ToString(), DateTimeOffset.UtcNow, checks.ToArray(), worker ?? NotTested, playerVersion);
+            RuntimeInformation.ProcessArchitecture.ToString(), DateTimeOffset.UtcNow, checks.ToArray(), worker ?? NotTested, playerVersion, config?.BrowserIntegrationEnabled);
     }
     private static HealthCheckResult InspectTask()
     {
