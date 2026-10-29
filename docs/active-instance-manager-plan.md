@@ -1,6 +1,6 @@
 # Active-instance manager implementation plan
 
-Status: proposed design; this change adds no runtime manager. Implement and validate the steps below before advertising the feature as available.
+Status: implemented in the local application. Automated safety checks and synthetic rendering cover the manager; live normal-token Roblox/gameplay acceptance remains a separate manual check. The design and acceptance criteria below describe the implementation and its platform limits.
 
 ## User experience and scope
 
@@ -88,3 +88,11 @@ These references constrain the implementation, rather than promising stronger gu
 ## Validation of this planning change
 
 The documentation branch passed all 35 existing default tests and `Build.ps1` using the ignored repository-local .NET 10 SDK. The first sandboxed test run could not access temporary registry/filesystem fixtures; rerunning the default suite with those operations permitted passed. No runtime code changed. These checks establish the existing baseline only; the manager-specific automated and live acceptance checks above remain future implementation work. Elevated integration and live Roblox gameplay were not run for this documentation change.
+
+## Implementation validation
+
+The implementation adds 15 default test groups covering authorization, trust invalidation, CPU normalization and lifetime resets, counter failures, process/window exits and replacement, cancellation boundaries, action outcomes, serialized refresh generations and delayed ticks, native handle-bound identity/counters, controlled visible/minimized/hidden/child windows, selection retention, and report exclusion. Synthetic panel previews at full width, minimum width and 150% scale are generated under ignored `.build/` output and inspected visually. The full 50-test default suite and release build use the repository-local .NET 10 SDK; registry/filesystem fixtures require permission outside the restricted sandbox.
+
+The UI uses one process row plus an explicit window picker, with stable PID/creation-time and HWND selections. Shared identity reading now uses `TokenSessionId`; the worker's scanning and pipe authentication remain separate. CPU capacity uses `GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)`. Close delivery uses `WM_CLOSE` with `SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT` and a 500 ms timeout. Successful delivery is not an exit assertion. Native HWND validation includes top-level/visible/unowned/non-tool eligibility, but the documented check/send race remains.
+
+No installed helper upgrade, live Roblox window action, distinct-account gameplay, normal-token installed acceptance, or elevated singleton-event integration run is claimed by these automated checks. Follow the manual acceptance steps above on the test installation. An in-progress signature/native call is allowed to drain after cancellation; the old controller is also awaited before a closed panel is recreated.

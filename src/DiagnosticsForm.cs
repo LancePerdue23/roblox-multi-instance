@@ -12,6 +12,7 @@ internal sealed class DiagnosticsForm : Form
     private readonly CancellationTokenSource closed = new();
     private readonly DiagnosticHistory history = new();
     private readonly Button integration;
+    private ActiveInstancesForm? activeInstances;
     private HealthSnapshot? snapshot;
     private LaunchResult[] recent = [];
     private bool historyAvailable;
@@ -33,6 +34,17 @@ internal sealed class DiagnosticsForm : Form
         integration = AddButton("Disable browser integration", () => InstallerAsync(snapshot?.BrowserIntegrationEnabled == false ? "--enable-browser-integration" : "--disable-browser-integration"));
         integration.Enabled = false;
         AddButton("&Setup", () => InstallerAsync("--setup")); AddButton("&Export report", ExportAsync); AddButton("&Clear history", ClearAsync);
+        AddButton("&Active instances", async () =>
+        {
+            // A closed panel's native call may still be draining. Serialize across
+            // form lifetimes as well as hide/show generations within one panel.
+            if (activeInstances is { IsDisposed: true }) await activeInstances.Completion;
+            if (IsDisposed) return;
+            if (activeInstances is null || activeInstances.IsDisposed) activeInstances = new ActiveInstancesForm();
+            if (!activeInstances.Visible) activeInstances.Show(this);
+            if (activeInstances.WindowState == FormWindowState.Minimized) activeInstances.WindowState = FormWindowState.Normal;
+            activeInstances.Activate();
+        });
         AddButton("User &logs", () => OpenLogsAsync(0)); AddButton("&Worker logs", () => OpenLogsAsync(1)); AddButton("Setup l&ogs", () => OpenLogsAsync(2));
         checks.SelectedIndexChanged += (_, _) => { if (checks.SelectedItems.Count > 0) detail.Text = checks.SelectedItems[0].Tag as string ?? ""; };
         launches.SelectedIndexChanged += (_, _) => { if (launches.SelectedItems.Count > 0) detail.Text = launches.SelectedItems[0].Tag as string ?? ""; };

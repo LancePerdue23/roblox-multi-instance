@@ -19,7 +19,6 @@ internal static class Native
     [DllImport("kernel32.dll", SetLastError = true)] internal static extern bool CloseHandle(nint handle);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetProcessTimes(SafeProcessHandle process, out long created, out long exited, out long kernel, out long user);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, System.Text.StringBuilder image, ref int length);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool ProcessIdToSessionId(int pid, out int session);
     [DllImport("kernel32.dll", SetLastError = true)] internal static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out int pid);
     [DllImport("kernel32.dll", SetLastError = true)] internal static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out int pid);
     [DllImport("advapi32.dll", SetLastError = true)] internal static extern bool OpenProcessToken(SafeProcessHandle process, uint access, out SafeAccessTokenHandle token);
@@ -60,18 +59,21 @@ internal static class Native
     internal static Identity GetIdentity(SafeProcessHandle process, int pid)
     {
         if (!GetProcessTimes(process, out long created, out _, out _, out _)) throw new Win32Exception();
-        if (!ProcessIdToSessionId(pid, out int session)) throw new Win32Exception();
         var name = new System.Text.StringBuilder(32768); int size = name.Capacity;
         if (!QueryFullProcessImageName(process, 0, name, ref size)) throw new Win32Exception();
         if (!OpenProcessToken(process, 8, out var token)) throw new Win32Exception();
         using (token)
         {
             GetTokenInformation(token, 1, 0, 0, out int required);
+            if (required < IntPtr.Size || required > 65536) throw new Win32Exception();
             nint data = Marshal.AllocHGlobal(Math.Max(required, 16));
             try
             {
                 if (!GetTokenInformation(token, 1, data, required, out _)) throw new Win32Exception();
                 string sid = new SecurityIdentifier(Marshal.ReadIntPtr(data)).Value;
+                // Bind the session to the same token/handle, not a second PID lookup.
+                if (!GetTokenInformation(token, 12, data, 4, out _)) throw new Win32Exception();
+                int session = Marshal.ReadInt32(data);
                 if (!GetTokenInformation(token, 20, data, 4, out _)) throw new Win32Exception();
                 return new Identity(sid, session, Marshal.ReadInt32(data) != 0, name.ToString(), created);
             }

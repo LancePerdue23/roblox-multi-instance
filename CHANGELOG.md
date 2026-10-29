@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a visible-only Active instances panel with window titles, local process start times, per-client CPU/working set, focus, and confirmed graceful close requests.
+- Bind player sessions to process tokens, revalidate actions against PID/creation-time identities and window ownership, and keep transient instance data out of logs/history/reports.
+
 - Add explicit update-aware player recovery and a persistent browser-integration toggle without background monitoring.
 - Retain original protocol backups and use conditional value restoration with a persisted interruption journal to preserve other installers' changes.
 
