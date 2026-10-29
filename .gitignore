@@ -1,0 +1,51 @@
+# Build outputs and downloaded tools
+**/bin/
+**/obj/
+.build/
+.build-home/
+.build-appdata/
+.vs/
+.idea/
+.vscode/
+release/
+artifacts/
+outputs/
+work/
+nuget-packages/
+*.user
+*.suo
+*.exe
+*.dll
+*.pdb
+*.zip
+*.nupkg
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
+NuGet.Config.user
+
+# Machine-specific runtime state and diagnostics
+installation.json
+setup-session.json
+logs/
+*.log
+*.log.*
+*.dmp
+*.etl
+*.pml
+*verification*.json
+*result*.json
+*trace*.json
+*.ready
+roblox-handles.txt
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
