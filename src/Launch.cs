@@ -292,7 +292,7 @@ internal static class ScheduledWorker
 
     internal static int RunCleanInstallerTask(string actionName)
     {
-        if (!Program.Elevated || actionName is not ("setup" or "repair" or "uninstall"))
+        if (!Program.Elevated || !Installation.IsAction(actionName))
             throw new InvalidOperationException("Unsupported installer task action.");
         dynamic service = Service();
         dynamic root = service.GetFolder("\\");

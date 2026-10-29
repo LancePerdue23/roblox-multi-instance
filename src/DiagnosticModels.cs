@@ -9,13 +9,14 @@ internal enum DiagnosticCode
     ProtocolMismatch, TaskMismatch, PermissionsUnsafe, InspectionUnavailable,
     WorkerNotTested, WorkerReady, WorkerUnavailable, WorkerTimeout, CompletionUnconfirmed,
     LaunchStarting, LaunchConfirmed, ProcessStartFailed, LaunchFailed, Interrupted,
-    HistoryUnavailable, LogsUnavailable
+    HistoryUnavailable, LogsUnavailable,
+    ProtocolChanged, ProtocolMissing, IntegrationDisabled, RecoveryPending
 }
 internal enum Remediation { None, Setup, Repair, ReinstallRoblox, Refresh, OpenLogs, ClearHistory }
 internal sealed record HealthCheckResult(string Id, CheckState State, DiagnosticCode Code,
     DateTimeOffset ObservedUtc, Remediation Action = Remediation.None, int? ErrorCode = null);
 internal sealed record HealthSnapshot(int SchemaVersion, string HelperVersion, string WindowsVersion,
-    string Architecture, DateTimeOffset CollectedUtc, HealthCheckResult[] Checks, HealthCheckResult WorkerTest, string RobloxVersion = "unknown")
+    string Architecture, DateTimeOffset CollectedUtc, HealthCheckResult[] Checks, HealthCheckResult WorkerTest, string RobloxVersion = "unknown", bool? BrowserIntegrationEnabled = null)
 {
     private IEnumerable<HealthCheckResult> Required => Checks.Where(c => c.Id is not ("history" or "logs"));
     internal CheckState Overall => Required.Any(c => c.State == CheckState.Failed) ? CheckState.Failed :
@@ -38,6 +39,10 @@ internal static class DiagnosticMessages
         DiagnosticCode.PlayerMissing => "Roblox may have updated. Launch or reinstall official Roblox, then run Repair.",
         DiagnosticCode.SignatureRejected => "The saved Roblox player could not be trusted. Reinstall official Roblox, then run Repair.",
         DiagnosticCode.ProtocolMismatch => "Browser launch registration differs from the helper. Run Repair.",
+        DiagnosticCode.ProtocolChanged => "Another installer changed this browser registration. Recover/Repair can capture its current official player and restore helper integration.",
+        DiagnosticCode.ProtocolMissing => "This browser launch registration is missing. Run Recover/Repair, or reinstall official Roblox if no trusted player can be found.",
+        DiagnosticCode.IntegrationDisabled => "Browser integration is intentionally disabled. Official browser launching is available; the desktop helper still works. Enable integration when ready.",
+        DiagnosticCode.RecoveryPending => "An installation operation was interrupted. Run Recover/Repair to reconcile its journal before making further changes.",
         DiagnosticCode.TaskMismatch => "The on-demand task is missing, disabled, or configured differently. Run Repair.",
         DiagnosticCode.PermissionsUnsafe => "Installation or task permissions allow unsafe changes. Run Repair.",
         DiagnosticCode.InspectionUnavailable => "This check could not establish safety. Check access and refresh; use Setup/Repair for full verification.",

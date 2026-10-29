@@ -47,7 +47,7 @@ internal static class Program
                 Installation.Shortcuts(args[1] == "remove");
                 return 0;
             }
-            if (mode is "--setup" or "--repair" or "--uninstall")
+            if (mode is "--setup" or "--repair" or "--recover" or "--uninstall" or "--enable-browser-integration" or "--disable-browser-integration")
             {
                 if (args.Length != 1) throw new InvalidOperationException("Unexpected setup argument.");
                 string action = mode[2..];
@@ -82,7 +82,7 @@ internal static class Program
                 return 0;
             }
             if (args.Length > 1 || (args.Length == 1 && !Launch.IsRobloxUri(args[0])))
-                throw new InvalidOperationException("Expected a Roblox launch link or --setup, --repair, --uninstall, --diagnostics.");
+                throw new InvalidOperationException("Expected a Roblox launch link or --setup, --repair, --recover, --uninstall, --diagnostics, --enable-browser-integration or --disable-browser-integration.");
             if (!File.Exists(ConfigPath))
             {
                 if (args.Length != 0) throw new InvalidOperationException("Run the helper with --setup first.");
@@ -90,6 +90,7 @@ internal static class Program
             }
             return Launch.RunAsync(args.FirstOrDefault()).GetAwaiter().GetResult();
         }
+        catch (OperationCanceledException) { return 1223; }
         catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == 1223) { return 1223; }
         catch (Exception e)
         {

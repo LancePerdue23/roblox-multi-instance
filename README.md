@@ -23,21 +23,28 @@ The Start menu's **Roblox Launch Helper** folder contains **Repair**, **Uninstal
 ```powershell
 .\RobloxLaunchHelper.exe --setup
 .\RobloxLaunchHelper.exe --repair
+.\RobloxLaunchHelper.exe --recover
+.\RobloxLaunchHelper.exe --disable-browser-integration
+.\RobloxLaunchHelper.exe --enable-browser-integration
 .\RobloxLaunchHelper.exe --uninstall
 .\RobloxLaunchHelper.exe --diagnostics
 ```
 
-Roblox updates may replace either launch registration or its version-specific executable. If launches stop using the helper, launch/reinstall official Roblox normally and then run **Repair**. Repair saves the current verified Roblox launch command and restores the wrapper. There is no background updater.
+Roblox updates may replace either launch registration or its version-specific executable. Open **Diagnostics**, select **Check again**, then **Recover/Repair** when needed. Recovery prefers a verified current official registration, then saved commands and backups. If those targets are gone, it checks immediate version directories under the standard per-user and Program Files Roblox folders. Only official signed `RobloxPlayerBeta.exe` files are accepted. If several players remain, you must select one; timestamps do not determine the choice. If none is trusted, reinstall official Roblox and retry. Normal launches never repair registrations automatically. There is no background updater.
 
-Uninstall removes the task, owned shortcuts, and installed program files. It restores backed-up protocol keys only when they still point at this helper, preserving registrations that another installer has since changed. Small launcher diagnostic logs under `%LOCALAPPDATA%\RobloxLaunchHelper\logs` are retained for troubleshooting.
+**Disable browser integration** restores official browser launching for protocols still owned by the helper, until you explicitly select **Enable browser integration**. External registrations are left alone. The desktop shortcut continues to use the helper. Repair, Recover and repeated Setup preserve the disabled preference; only Enable turns it back on. Each action uses the same-account administrator approval flow. If a helper-owned protocol has no trusted official restoration target, disabling or uninstalling stops before changing registrations so you can reinstall official Roblox first.
+
+The protected installation settings retain original registry snapshots, newer restoration snapshots, owned values and an interruption journal. Recovery, disable, rollback and uninstall change individual values only while they still match the expected helper-owned values. Other installers' values and nested keys are preserved. Interrupted operations are reconciled on the next explicit installation action. Detected concurrent changes stop the operation and appear as a conflict; Windows offers no atomic compare-and-write across arbitrary installers.
+
+Uninstall removes the task, owned shortcuts, and installed program files. It restores owned protocol values with a trusted official launch command only while they still point at this helper, preserving registrations and unrelated values that another installer has since changed. Small launcher diagnostic logs under `%LOCALAPPDATA%\RobloxLaunchHelper\logs` are retained for troubleshooting.
 
 Setup logs from the downloaded executable are retained under `%ProgramFiles%\RobloxLaunchHelper\setup-logs`. Repair invoked from the installed Start menu shortcut records its setup status in the installed `logs` folder.
 
 ## Diagnostics dashboard and reports
 
-Open **Diagnostics** in the Start menu, or run `RobloxLaunchHelper.exe --diagnostics`, normally without administrator access. The local Windows dashboard checks installation settings, the saved Roblox player and publisher, both browser protocols, the on-demand task configuration, and effective permissions. Opening it or clicking **Refresh** does not start a worker, launch Roblox, close handles, or repair the installation. Permission inspection is read-only; an inconclusive check is **Unknown**, not a pass. Registry results describe this process's view. Setup/Repair still verifies registration in Windows's normal user context separately.
+Open **Diagnostics** in the Start menu, or run `RobloxLaunchHelper.exe --diagnostics`, normally without administrator access. The local Windows dashboard checks installation settings, the saved Roblox player and publisher, both browser protocols, the on-demand task configuration, and effective permissions. Opening it or clicking **Check again** does not start a worker, launch Roblox, close handles, or repair the installation. Permission inspection is read-only; an inconclusive check is **Unknown**, not a pass. Registry results describe this process's view. Setup/Repair still verifies registration in Windows's normal user context separately.
 
-**Test worker** explicitly starts or connects to the existing authenticated on-demand worker and sends only a probe. It does not scan Roblox handles; the worker exits normally when idle. A test has a 35-second total limit. Refresh and Setup/Repair invalidate its previous result. An idle worker is normal. **Repair** and **Setup** use the existing administrator approval flow only when selected. Buttons open the user, worker, and setup log folders separately.
+**Test worker** explicitly starts or connects to the existing authenticated on-demand worker and sends only a probe. It does not scan Roblox handles; the worker exits normally when idle. A test has a 35-second total limit. Check again and installation actions invalidate its previous result. An idle worker is normal. **Recover/Repair**, the browser toggle and **Setup** use the existing administrator approval flow only when selected. Buttons open the user, worker, and setup log folders separately.
 
 Recent results distinguish a confirmed singleton release, Roblox starting without confirmed multi-instance readiness, a failed launch, and an interrupted launcher whose completion is unknown. Confirmation does not establish account sign-in or that either account remained in-game. Existing text logs are not reconstructed as launch outcomes, so history starts with this version. Successful launches remain silent.
 
