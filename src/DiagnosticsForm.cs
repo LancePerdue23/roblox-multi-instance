@@ -12,13 +12,21 @@ internal sealed class DiagnosticsForm : Form
     private readonly CancellationTokenSource closed = new();
     private readonly DiagnosticHistory history = new();
     private readonly Button integration;
+    private readonly Button launchRoblox;
+    private readonly Func<ProcessStartInfo, CancellationToken, Task> launchProcess;
+    private readonly Action<string> launchError;
     private ActiveInstancesForm? activeInstances;
+    private readonly ManagerHost? managerHost;
     private HealthSnapshot? snapshot;
     private LaunchResult[] recent = [];
     private bool historyAvailable;
     private HealthCheckResult worker = DiagnosticChecks.NotTested;
-    internal DiagnosticsForm(bool collectOnShown = true)
+    internal DiagnosticsForm(bool collectOnShown = true, ManagerHost? managerHost = null,
+        Func<ProcessStartInfo, CancellationToken, Task>? launchProcess = null, Action<string>? launchError = null)
     {
+        this.managerHost = managerHost;
+        this.launchProcess = launchProcess ?? RunLaunchChildAsync;
+        this.launchError = launchError ?? (message => MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning));
         Text = "Roblox Multi Instance — Diagnostics"; Size = new(1100, 760); MinimumSize = new(740, 560);
         AutoScaleMode = AutoScaleMode.Dpi; StartPosition = FormStartPosition.CenterScreen;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(12) };
@@ -30,27 +38,62 @@ internal sealed class DiagnosticsForm : Form
         layout.Controls.Add(status, 0, 0); layout.Controls.Add(checks, 0, 1);
         layout.Controls.Add(new Label { Text = "Recent launches — up to 100 attempts / 30 days. Select a row for details; Check again reloads results.", AutoSize = true }, 0, 2);
         layout.Controls.Add(launches, 0, 3); layout.Controls.Add(detail, 0, 4); layout.Controls.Add(buttons, 0, 5); Controls.Add(layout);
+        launchRoblox = new Button { Text = "&Launch Roblox", AutoSize = true, Margin = new Padding(4), AccessibleName = "Launch Roblox" };
+        launchRoblox.Click += async (_, _) => await LaunchRobloxAsync();
+        buttons.Controls.Add(launchRoblox);
         AddButton("&Check again", RefreshAsync); AddButton("&Test worker", TestAsync); AddButton("&Recover/Repair", () => InstallerAsync("--recover"));
         integration = AddButton("Disable browser integration", () => InstallerAsync(snapshot?.BrowserIntegrationEnabled == false ? "--enable-browser-integration" : "--disable-browser-integration"));
         integration.Enabled = false;
         AddButton("&Setup", () => InstallerAsync("--setup")); AddButton("&Export report", ExportAsync); AddButton("&Clear history", ClearAsync);
-        AddButton("&Active instances", async () =>
-        {
-            // A closed panel's native call may still be draining. Serialize across
-            // form lifetimes as well as hide/show generations within one panel.
-            if (activeInstances is { IsDisposed: true }) await activeInstances.Completion;
-            if (IsDisposed) return;
-            if (activeInstances is null || activeInstances.IsDisposed) activeInstances = new ActiveInstancesForm();
-            if (!activeInstances.Visible) activeInstances.Show(this);
-            if (activeInstances.WindowState == FormWindowState.Minimized) activeInstances.WindowState = FormWindowState.Normal;
-            activeInstances.Activate();
-        });
+        AddButton("&Active instances", () => OpenInstancesAsync());
         AddButton("Launch notifications…", () => { using var form = new NotificationSettingsForm(); form.ShowDialog(this); return Task.CompletedTask; });
+        AddButton("Updates…", () => { UpdateHost.OpenManual(); return Task.CompletedTask; });
         AddButton("User &logs", () => OpenLogsAsync(0)); AddButton("&Worker logs", () => OpenLogsAsync(1)); AddButton("Setup l&ogs", () => OpenLogsAsync(2));
         checks.SelectedIndexChanged += (_, _) => { if (checks.SelectedItems.Count > 0) detail.Text = checks.SelectedItems[0].Tag as string ?? ""; };
         launches.SelectedIndexChanged += (_, _) => { if (launches.SelectedItems.Count > 0) detail.Text = launches.SelectedItems[0].Tag as string ?? ""; };
         if (collectOnShown) Shown += async (_, _) => await RunAsync(RefreshAsync);
         FormClosed += (_, _) => closed.Cancel();
+    }
+    internal Task InstanceCompletion => activeInstances?.Completion ?? Task.CompletedTask;
+    private static async Task RunLaunchChildAsync(ProcessStartInfo start, CancellationToken token)
+    {
+        using var process = Process.Start(start) ?? throw new IOException("The Roblox launcher could not start.");
+        // Cancel only the wait when the dashboard closes. Disposing Process never terminates the child.
+        await process.WaitForExitAsync(token);
+    }
+    internal async Task LaunchRobloxAsync()
+    {
+        if (IsDisposed || !launchRoblox.Enabled) return;
+        launchRoblox.Enabled = false;
+        try
+        {
+            var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+            start.ArgumentList.Add("--launch-roblox");
+            try { await launchProcess(start, closed.Token); }
+            catch (OperationCanceledException) when (closed.IsCancellationRequested) { return; }
+            catch (Exception e)
+            {
+                if (!IsDisposed && !closed.IsCancellationRequested)
+                    launchError($"The Roblox launcher could not start or be monitored (0x{e.HResult:X8}). Try again or check the user logs.");
+                return;
+            }
+            // The child owns all launch warnings; do not repeat them based on its exit code.
+            if (!IsDisposed && !closed.IsCancellationRequested) await RunAsync(CollectAsync);
+        }
+        finally { if (!IsDisposed && !closed.IsCancellationRequested) launchRoblox.Enabled = true; }
+    }
+    internal async Task OpenInstancesAsync(ArrangementKind? command = null)
+    {
+        if (activeInstances is { IsDisposed: true }) await activeInstances.Completion;
+        if (IsDisposed) return;
+        if (activeInstances is null || activeInstances.IsDisposed)
+            activeInstances = new ActiveInstancesForm(preferences: managerHost?.Preferences,
+                enableTray: managerHost is null ? null : managerHost.EnableTray,
+                configureShortcuts: managerHost is null ? null : managerHost.ConfigureShortcuts);
+        if (!activeInstances.Visible) activeInstances.Show(this);
+        if (activeInstances.WindowState == FormWindowState.Minimized) activeInstances.WindowState = FormWindowState.Normal;
+        activeInstances.Activate();
+        if (command is ArrangementKind layout) await activeInstances.OpenArrangementAsync(layout);
     }
     private Button AddButton(string text, Func<Task> action)
     {

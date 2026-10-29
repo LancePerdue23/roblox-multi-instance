@@ -235,7 +235,14 @@ internal static partial class Installation
         dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
         dynamic shortcut = shell.CreateShortcut(path);
         shortcut.TargetPath = Program.InstalledExe; shortcut.Arguments = args;
-        shortcut.WorkingDirectory = Program.InstallDirectory; shortcut.Description = "Launch Roblox and close its singleton event automatically";
+        shortcut.WorkingDirectory = Program.InstallDirectory;
+        shortcut.Description = args switch
+        {
+            "" or "--diagnostics" => "Open the Roblox Multi Instance dashboard",
+            "--repair" => "Repair Roblox Launch Helper",
+            "--uninstall" => "Uninstall Roblox Launch Helper",
+            _ => "Roblox Launch Helper"
+        };
         shortcut.Save();
     }
 

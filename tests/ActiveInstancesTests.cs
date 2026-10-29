@@ -14,6 +14,13 @@ internal static class ActiveInstancesTests
 
     internal static void Run(Action<string, Action> run)
     {
+        run("Background observation skips CPU and memory sampling", () =>
+        {
+            var platform = new FakePlatform { ErrorStage = "cpu" };
+            Check(new InstanceCollector(platform, Sid, Session, collectMetrics: false).Collect(default).Instances.Length == 1);
+            platform.ErrorStage = "memory";
+            Check(new InstanceCollector(platform, Sid, Session, collectMetrics: false).Collect(default).Instances.Length == 1);
+        });
         run("Active instances require owner, handle session, basename and publisher; trust is per lifetime", () =>
         {
             var platform = new FakePlatform();
@@ -235,6 +242,7 @@ internal static class ActiveInstancesTests
             using var process = new InstanceProcess(Environment.ProcessId);
             nint window = fixture.Handle;
             Check(process.OwnsWindow(window) && !process.OwnsWindow(child.Handle));
+            Check(process.HasVisibleWindow());
             Check(process.Windows().Any(w => w.Handle == window && w.Title == fixture.Text));
             fixture.WindowState = FormWindowState.Minimized;
             Check(process.OwnsWindow(window) && process.Windows().Any(w => w.Handle == window));
@@ -255,7 +263,7 @@ internal static class ActiveInstancesTests
     private static void Render()
     {
         const string caption = "synthetic-private-caption-cookie=secret";
-        using var form = new ActiveInstancesForm(false, new FakePlatform());
+        using var form = new ActiveInstancesForm(false, new FakePlatform(), enableTray: () => { }, configureShortcuts: () => { });
         form.Show(); form.PerformLayout();
         _ = form.Handle;
         var list = Descendants(form).OfType<ListView>().Single(); _ = list.Handle;
@@ -277,6 +285,8 @@ internal static class ActiveInstancesTests
         form.Present(new([second with { Key = new(43, Created + 2) }], 0)); Check(form.SelectedTarget is null);
         form.Present(new([first, second, first with { Key = new(44, Created + 3), Windows = [], CpuPercent = null,
             CpuAvailable = false, WorkingSet = null }], 1));
+        Check(Descendants(form).OfType<Label>().Any(label => label.Text.StartsWith("2 client(s) with windows; 1 background process(es)")));
+        Check(list.Items[2].Text == "No visible window" && list.Items[2].SubItems[5].Text == "Background / starting");
         Check(list.Visible && list.Width > 500 && list.Height > 100);
         form.CreateControl();
         string output = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build");

@@ -15,13 +15,21 @@ internal sealed class ActiveInstancesForm : Form
     private readonly Button close = new() { Text = "&Close window…", AutoSize = true, Enabled = false };
     private readonly InstanceRefreshController refresh;
     private readonly InstanceActions actions;
+    private readonly BackgroundClientCleanup backgroundCleanup;
+    private readonly Button cleanup = new() { Text = "Clean up background clients…", AutoSize = true, Enabled = false };
     private readonly CancellationTokenSource lifetime = new();
     private readonly CancellationToken lifetimeToken;
     private InstanceSnapshot snapshot = InstanceSnapshot.Failed;
     private bool busy, presenting, ready, fresh, disposedResources;
+    private readonly Button arrange = new() { Text = "&Arrange…", AutoSize = true };
+    private readonly List<ArrangementChoice> arrangementChoices = [];
+    private readonly LayoutPreferences layoutPreferences;
+    private string? lastPreset;
     internal Task Completion => refresh.Completion;
-    internal ActiveInstancesForm(bool collectOnShown = true, IInstancePlatform? platform = null)
+    internal ActiveInstancesForm(bool collectOnShown = true, IInstancePlatform? platform = null,
+        LayoutPreferences? preferences = null, Action? enableTray = null, Action? configureShortcuts = null)
     {
+        layoutPreferences = preferences ?? new LayoutPreferences();
         lifetimeToken = lifetime.Token;
         Text = "Roblox Multi Instance — Active instances";
         Size = new(1120, 520); MinimumSize = new(800, 380);
@@ -30,6 +38,7 @@ internal sealed class ActiveInstancesForm : Form
         using var current = Process.GetCurrentProcess();
         string sid = Program.Sid; int session = current.SessionId;
         actions = new(platform, sid, session);
+        backgroundCleanup = new(pid => new InstanceProcess(pid, allowStop: true), platform.Trusted, sid, session);
         refresh = new(() => new InstanceCollector(platform, sid, session), Present);
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 5, ColumnCount = 1, Padding = new(12) };
         layout.RowStyles.Add(new(SizeType.AutoSize)); layout.RowStyles.Add(new(SizeType.Percent, 100));
@@ -41,11 +50,26 @@ internal sealed class ActiveInstancesForm : Form
         var controls = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
         controls.Controls.Add(new Label { Text = "Window:", AutoSize = true, Padding = new(0, 6, 0, 0) });
         controls.Controls.Add(windows); controls.Controls.Add(focus); controls.Controls.Add(close);
+        controls.Controls.Add(arrange);
+        controls.Controls.Add(cleanup);
+        cleanup.Click += async (_, _) => await CleanupBackgroundAsync();
+        arrange.Click += async (_, _) => await OpenArrangementAsync(ArrangementKind.Grid);
+        if (enableTray is not null)
+        {
+            var tray = new Button { Text = "Enable tray mode", AutoSize = true };
+            tray.Click += (_, _) => { if (!busy) enableTray(); }; controls.Controls.Add(tray);
+        }
+        if (configureShortcuts is not null)
+        {
+            var shortcuts = new Button { Text = "Shortcut settings…", AutoSize = true };
+            shortcuts.Click += (_, _) => { if (!busy) configureShortcuts(); }; controls.Controls.Add(shortcuts);
+        }
         layout.Controls.Add(status, 0, 0); layout.Controls.Add(clients, 0, 1); layout.Controls.Add(controls, 0, 2);
         layout.Controls.Add(actionResult, 0, 3);
         layout.Controls.Add(new Label { AutoSize = true, Dock = DockStyle.Fill,
             Text = "Window titles are supplied by Roblox. They do not identify or verify accounts.\n" +
-                "Working set includes shared resident pages. Close requests may interrupt gameplay." }, 0, 4);
+                "Working set includes shared resident pages. Close requests may interrupt gameplay.\n" +
+                "While the system app runs, background clients without visible windows are automatically stopped after a one-minute grace period." }, 0, 4);
         Controls.Add(layout);
         windows.DisplayMember = nameof(WindowChoice.Label);
         clients.SelectedIndexChanged += (_, _) => { if (!presenting) ChooseClient(); };
@@ -78,7 +102,7 @@ internal sealed class ActiveInstancesForm : Form
         bool active = ready && !busy && Visible && WindowState != FormWindowState.Minimized &&
             Owner?.WindowState != FormWindowState.Minimized && !IsDisposed;
         refresh.SetActive(active);
-        if (!active) { fresh = false; focus.Enabled = close.Enabled = false; }
+        if (!active) { fresh = false; focus.Enabled = close.Enabled = cleanup.Enabled = false; }
     }
     private ProcessKey? SelectedKey => clients.SelectedItems.Count == 1 ? clients.SelectedItems[0].Tag as ProcessKey? : null;
     internal InstanceTarget? SelectedTarget => windows.SelectedItem is WindowChoice choice && SelectedKey is ProcessKey key
@@ -110,19 +134,22 @@ internal sealed class ActiveInstancesForm : Form
             clients.Items.Clear();
             foreach (var client in result.Instances)
             {
-                var row = new ListViewItem([client.Windows.Length == 0 ? "No window yet" :
+                var row = new ListViewItem([client.Windows.Length == 0 ? "No visible window" :
                     string.Join(" | ", client.Windows.Select(w => Caption(w.Title))), client.Key.Id.ToString(),
                     InstancePolicy.Started(client.Key).ToString("g"), client.CpuPercent?.ToString("F1") ??
                         (client.CpuAvailable ? "Sampling…" : "Unavailable"),
                     client.WorkingSet is ulong memory ? (memory / 1048576d).ToString("F1") : "Unavailable",
-                    client.Windows.Length == 0 ? "No window yet" : "Running"]);
+                    client.Windows.Length == 0 ? "Background / starting" : "Running"]);
                 row.Tag = client.Key; clients.Items.Add(row);
                 row.Selected = client.Key == selected;
             }
         }
         finally { clients.EndUpdate(); presenting = false; }
         ChooseClient(target, false);
-        status.Text = (result.Instances.Length == 0 ? "No active instances." : $"{result.Instances.Length} active client(s).") +
+        int windowed = result.Instances.Count(client => client.Windows.Length > 0);
+        int background = result.Instances.Length - windowed;
+        status.Text = (result.Instances.Length == 0 ? "No Roblox processes." :
+            $"{windowed} client(s) with windows; {background} background process(es) without visible windows.") +
             $" Updated {DateTime.Now:T}." + (result.Unavailable > 0 ? $" {result.Unavailable} candidate(s) unavailable or unverified." : "");
     }
     private void ChooseClient(InstanceTarget? preserve = null, bool autoSelect = true)
@@ -140,9 +167,86 @@ internal sealed class ActiveInstancesForm : Form
         }
         EnableActions();
     }
-    private void EnableActions() => focus.Enabled = close.Enabled = fresh && !busy && Visible &&
-        WindowState != FormWindowState.Minimized && Owner?.WindowState != FormWindowState.Minimized &&
-        SelectedTarget is InstanceTarget target && InstancePolicy.Contains(snapshot, target);
+    private void EnableActions()
+    {
+        bool available = fresh && !busy && Visible && WindowState != FormWindowState.Minimized &&
+            Owner?.WindowState != FormWindowState.Minimized;
+        focus.Enabled = close.Enabled = available && SelectedTarget is InstanceTarget target && InstancePolicy.Contains(snapshot, target);
+        cleanup.Enabled = available && BackgroundClientCleanup.Candidates(snapshot, DateTime.UtcNow).Length > 0;
+    }
+
+    private async Task CleanupBackgroundAsync()
+    {
+        if (!fresh || busy) return;
+        var candidates = BackgroundClientCleanup.Candidates(snapshot, DateTime.UtcNow);
+        if (candidates.Length == 0) return;
+        busy = true; SyncRefresh(); windows.Enabled = clients.Enabled = arrange.Enabled = false;
+        try
+        {
+            await refresh.Completion;
+            if (lifetimeToken.IsCancellationRequested) return;
+            if (MessageBox.Show(this, $"Force stop {candidates.Length} Roblox background process(es) without visible windows?\n\n" +
+                "Only processes older than one minute are eligible. A slow startup can also have no window; wait for current launches to finish before continuing. " +
+                "Cleanup rechecks each process and skips any that now have a visible window. Unsaved background activity will be lost.",
+                "Clean up background Roblox clients", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+            var results = await Task.Run(() => candidates.Select(key => backgroundCleanup.Execute(key, lifetimeToken)).ToArray());
+            if (!IsDisposed) actionResult.Text = $"Background cleanup: {results.Count(result => result == BackgroundCleanupResult.Stopped)} stopped; " +
+                $"{results.Count(result => result == BackgroundCleanupResult.Skipped)} skipped; " +
+                $"{results.Count(result => result is BackgroundCleanupResult.Unavailable or BackgroundCleanupResult.ExitUnconfirmed)} unavailable or exit unconfirmed.";
+        }
+        catch (OperationCanceledException) { }
+        catch { if (!IsDisposed) actionResult.Text = "Background cleanup could not finish. Refresh and try again."; }
+        finally
+        {
+            busy = false;
+            if (!IsDisposed) { windows.Enabled = clients.Enabled = arrange.Enabled = true; SyncRefresh(); }
+        }
+    }
+
+    internal async Task OpenArrangementAsync(ArrangementKind kind)
+    {
+        if (busy || IsDisposed || Application.OpenForms.Cast<Form>().Any(f => f.Modal)) return;
+        busy = true; arrange.Enabled = false; SyncRefresh(); windows.Enabled = clients.Enabled = false;
+        try
+        {
+            await refresh.Completion;
+            if (lifetimeToken.IsCancellationRequested) return;
+            string? monitor = null;
+            try
+            {
+                var work = Screen.FromControl(this).WorkingArea;
+                monitor = PlacementNative.Monitors().FirstOrDefault(m => m.Work == work)?.Id;
+            }
+            catch { }
+            using var dialog = new ArrangementForm(arrangementChoices, layoutPreferences, kind, lastPreset, monitor);
+            dialog.ShowDialog(this); lastPreset = dialog.SelectedPresetName;
+        }
+        catch { if (!IsDisposed) actionResult.Text = "Arrangement unavailable. Reopen the panel and try again."; }
+        finally
+        {
+            busy = false;
+            if (!IsDisposed) { arrange.Enabled = true; windows.Enabled = clients.Enabled = true; SyncRefresh(); }
+        }
+    }
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        Control? active = ActiveControl;
+        while (active is ContainerControl container && container.ActiveControl is not null) active = container.ActiveControl;
+        if (!busy && active is not TextBoxBase && !Application.OpenForms.Cast<Form>().Any(f => f.Modal))
+        {
+            ArrangementKind? command = keyData switch
+            {
+                Keys.Control | Keys.Alt | Keys.D1 => ArrangementKind.SideBySide,
+                Keys.Control | Keys.Alt | Keys.D2 => ArrangementKind.Grid,
+                Keys.Control | Keys.Alt | Keys.R => ArrangementKind.Saved,
+                Keys.Control | Keys.Alt | Keys.O => ArrangementKind.Recover,
+                _ => null
+            };
+            if (command is ArrangementKind layout) { BeginInvoke(async () => await OpenArrangementAsync(layout)); return true; }
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
 
     private async Task ActAsync(InstanceAction action)
     {

@@ -22,6 +22,70 @@ internal static class DiagnosticsTests
     private static HealthSnapshot Snapshot(params HealthCheckResult[] checks) => new(1, "1.0.1.0", "10.0.12345.0", "X64", Now, checks, DiagnosticChecks.NotTested);
     internal static void Run(Action<string, Action> run)
     {
+        run("Dashboard startup separates app opening, setup and explicit Roblox launches", () =>
+        {
+            Check(Program.SelectStartup([], true) == Program.StartupMode.Dashboard);
+            Check(Program.SelectStartup([], false) == Program.StartupMode.Setup);
+            foreach (bool installed in new[] { false, true })
+                Check(Program.SelectStartup(["--diagnostics"], installed) == Program.StartupMode.Dashboard);
+            foreach (string argument in new[] { "--launch-roblox", "roblox:test", "ROBLOX-PLAYER:synthetic" })
+            {
+                Check(Program.SelectStartup([argument], true) == Program.StartupMode.Roblox);
+                Reject([argument], false);
+            }
+            foreach (string[] arguments in new string[][] { ["--diagnostics", "extra"], ["--launch-roblox", "extra"],
+                ["roblox:test", "extra"], ["--unknown"], ["https://www.roblox.com"], [""] })
+                Reject(arguments, true);
+            static void Reject(string[] arguments, bool installed)
+            {
+                try { Program.SelectStartup(arguments, installed); }
+                catch (InvalidOperationException) { return; }
+                throw new Exception("Invalid startup arguments were accepted.");
+            }
+        });
+        run("Dashboard launch dispatch stays responsive and recovers after startup failure", () =>
+        {
+            int starts = 0, errors = 0;
+            var pending = new TaskCompletionSource();
+            using var form = new DiagnosticsForm(false, launchProcess: (start, token) =>
+            {
+                starts++;
+                Check(start.FileName == Environment.ProcessPath && !start.UseShellExecute && string.IsNullOrEmpty(start.Verb));
+                Check(start.ArgumentList.SequenceEqual(new[] { "--launch-roblox" }));
+                if (starts == 1) throw new IOException("synthetic startup failure");
+                return pending.Task.WaitAsync(token);
+            }, launchError: _ => errors++) { ShowInTaskbar = false, Opacity = 0 };
+            form.Show();
+            var panel = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<FlowLayoutPanel>().Single();
+            var button = panel.Controls.OfType<Button>().Single(b => b.AccessibleName == "Launch Roblox");
+            button.PerformClick();
+            Check(starts == 1 && errors == 1 && button.Enabled);
+            var launch = form.LaunchRobloxAsync();
+            Check(starts == 2 && !button.Enabled);
+            Check(panel.Controls.OfType<Button>().Single(b => b.Text.Contains("Check again")).Enabled);
+            Check(form.LaunchRobloxAsync().IsCompletedSuccessfully && starts == 2);
+            pending.SetResult();
+            Pump(launch);
+            Check(button.Enabled && errors == 1);
+            form.Close();
+        });
+        run("Closing Diagnostics cancels only the launch wait", () =>
+        {
+            var child = new TaskCompletionSource();
+            CancellationToken waitToken = default;
+            int errors = 0;
+            using var form = new DiagnosticsForm(false, launchProcess: (_, token) =>
+            {
+                waitToken = token;
+                return child.Task.WaitAsync(token);
+            }, launchError: _ => errors++) { ShowInTaskbar = false, Opacity = 0 };
+            form.Show();
+            var launch = form.LaunchRobloxAsync();
+            form.Close();
+            Pump(launch);
+            Check(waitToken.IsCancellationRequested && !child.Task.IsCompleted && errors == 0);
+            child.SetResult();
+        });
         run("Diagnostic severity, safe inspection failures and remediation catalog", () =>
         {
             var healthy = DiagnosticChecks.Result("task", CheckState.Healthy, DiagnosticCode.Ready);
@@ -190,5 +254,16 @@ internal static class DiagnosticsTests
             using var scaled = new Bitmap(form.Width, form.Height); form.DrawToBitmap(scaled, new Rectangle(Point.Empty, form.Size));
             scaled.Save(Path.Combine(output, "dashboard-preview-150.png"));
         });
+    }
+    private static void Pump(Task task)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (!task.IsCompleted && deadline.Elapsed < TimeSpan.FromSeconds(40))
+        {
+            Application.DoEvents();
+            Thread.Sleep(5);
+        }
+        Check(task.IsCompleted);
+        task.GetAwaiter().GetResult();
     }
 }

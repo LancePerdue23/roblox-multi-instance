@@ -2,8 +2,19 @@
 
 ## Unreleased
 
+- Count windowed clients separately from background Roblox processes; automatically stop clients observed without windows for one minute while the system app or tray runs, with identity and visible-window rechecks and a confirmed manual cleanup action.
+- Open Diagnostics by default from the installed executable and desktop shortcut; add an explicit Launch Roblox button while preserving immediate browser Play launches.
+- Check GitHub Releases once per Windows boot with a passive update card, in-app release notes, and manual update checks in Diagnostics.
+- Add explicit direct downloads with size/SHA-256/version verification and a separate graceful setup handoff, preserving Roblox games and existing preferences.
 - Add optional launch progress and confirmed-helper completion feedback, both off by default, using the shared launch-status model without inferring account sign-in or game entry.
 - Group overlapping launch feedback in a temporary, authenticated normal-user notification host with bounded delivery, deduplication, popup limits, and local warning fallback. Finalize launch history before warning presentation.
+- Wait through Windows' temporary null foreground handle during activation/fullscreen transitions, support an already-focused client, and hold F11 for 150 ms so frame-based input sampling can observe the press.
+- Use a focus-checked real F11 shortcut for fullscreen conversion; background key messages were ignored by live Roblox clients. Restore manager focus when appropriate and report denied focus, held keys, or interruptions.
+- Automatically request and verify windowed mode for selected fullscreen Roblox clients before arranging, with bounded per-client results and continuation when a client does not respond.
+- Keep arrangement checkboxes selectable in fullscreen and refresh selected window states on Preview, so switching to windowed mode does not require reopening Arrange.
+- Add previewed side-by-side/grid window arrangements, per-monitor assignments, ordered saved-position presets, and explicit off-screen recovery with a 640×360 logical-pixel client minimum.
+- Support mixed-DPI placement and monitor identity matching, with missing-monitor fallback and revalidated process/window targets.
+- Add panel layout shortcuts and explicitly enabled tray/global shortcuts without sign-in startup or hidden resource sampling.
 - Add a visible-only Active instances panel with window titles, local process start times, per-client CPU/working set, focus, and confirmed graceful close requests.
 - Bind player sessions to process tokens, revalidate actions against PID/creation-time identities and window ownership, and keep transient instance data out of logs/history/reports.
 

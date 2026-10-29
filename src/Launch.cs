@@ -160,6 +160,7 @@ internal static class Launch
             attempt.SetFallback(LaunchOutcome.Failed, DiagnosticCode.ProcessStartFailed);
             using var game = Process.Start(start) ?? throw new UserError("Roblox could not start. Run Repair.");
             attempt.Started();
+            UpdateHost.TryStartAutomatic();
             attempt.SetFallback(LaunchOutcome.Warning, DiagnosticCode.CompletionUnconfirmed);
             Log.Write("roblox-launched", "", game.Id);
             if (pipe is not null)

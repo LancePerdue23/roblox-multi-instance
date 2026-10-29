@@ -22,10 +22,16 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         try
         {
             string mode = args.FirstOrDefault() ?? "";
+            if (mode is "--check-updates" or "--updates")
+            {
+                if (args.Length != 1) return 2;
+                return UpdateHost.Run(mode == "--check-updates");
+            }
+            if (mode == "--update-handoff") return UpdateSetup.Run(args);
             if (mode == "--launch-notifications")
             {
                 if (args.Length != 1) return 2;
@@ -78,32 +84,41 @@ internal static class Program
                 Installation.Execute(args[1], args[2]);
                 return 0;
             }
-            if (mode == "--diagnostics")
+            var startup = SelectStartup(args, File.Exists(ConfigPath));
+            if (startup == StartupMode.Setup) return Main(["--setup"]);
+            if (startup == StartupMode.Dashboard)
             {
-                if (args.Length != 1) throw new UserError("Unexpected diagnostics argument.");
                 if (Elevated) throw new UserError("Open Diagnostics normally, without Run as administrator, so checks use your normal Windows permissions.");
                 Application.EnableVisualStyles();
-                Application.Run(new DiagnosticsForm());
+                using var manager = new ManagerHost();
+                UpdateHost.TryStartAutomatic();
+                Application.Run(manager);
                 return 0;
             }
-            if (args.Length > 1 || (args.Length == 1 && !Launch.IsRobloxUri(args[0])))
-                throw new InvalidOperationException("Expected a Roblox launch link or --setup, --repair, --recover, --uninstall, --diagnostics, --enable-browser-integration or --disable-browser-integration.");
-            if (!File.Exists(ConfigPath))
-            {
-                if (args.Length != 0) throw new InvalidOperationException("Run the helper with --setup first.");
-                return Main(["--setup"]);
-            }
-            return Launch.RunAsync(args.FirstOrDefault()).GetAwaiter().GetResult();
+            return Launch.RunAsync(mode == "--launch-roblox" ? null : args[0]).GetAwaiter().GetResult();
         }
         catch (OperationCanceledException) { return 1223; }
         catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == 1223) { return 1223; }
         catch (Exception e)
         {
             Log.Write("operation-failed", e.GetType().Name + (e is System.ComponentModel.Win32Exception native ? ":win32=" + native.NativeErrorCode : ""), e.HResult);
-            if (args.FirstOrDefault() is not ("--worker" or "--verify" or "--verify-protocols" or "--launch-notifications"))
+            if (args.FirstOrDefault() is not ("--worker" or "--verify" or "--verify-protocols" or "--launch-notifications" or "--check-updates"))
                 MessageBox.Show(e is UserError ? e.Message : FriendlyError(e), "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return 1;
         }
+    }
+
+    internal enum StartupMode { Setup, Dashboard, Roblox }
+
+    // Administrative and internal modes are handled before this user-facing routing.
+    internal static StartupMode SelectStartup(string[] args, bool installed)
+    {
+        if (args.Length == 0) return installed ? StartupMode.Dashboard : StartupMode.Setup;
+        if (args.Length == 1 && args[0] == "--diagnostics") return StartupMode.Dashboard;
+        if (args.Length != 1 || (args[0] != "--launch-roblox" && !Launch.IsRobloxUri(args[0])))
+            throw new InvalidOperationException("Expected a Roblox launch link or --setup, --repair, --recover, --uninstall, --diagnostics, --launch-roblox, --enable-browser-integration or --disable-browser-integration.");
+        if (!installed) throw new InvalidOperationException("Run the helper with --setup first.");
+        return StartupMode.Roblox;
     }
 
     internal static string FriendlyError(Exception e) => e is InvalidOperationException ? e.Message :

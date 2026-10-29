@@ -5,7 +5,7 @@ namespace RobloxLaunchHelper;
 // Transient UI data only: deliberately absent from diagnostic history/report models.
 internal sealed record InstanceWindow(nint Handle, string Title);
 internal sealed record ActiveInstance(ProcessKey Key, InstanceWindow[] Windows, double? CpuPercent,
-    ulong? WorkingSet, bool CpuAvailable);
+    ulong? WorkingSet, bool CpuAvailable, bool? AnyVisibleWindow = null);
 internal sealed record InstanceSnapshot(ActiveInstance[] Instances, int Unavailable, bool Available = true)
 {
     internal static readonly InstanceSnapshot Failed = new([], 0, false);
@@ -48,7 +48,7 @@ internal static class InstancePolicy
 }
 
 internal sealed class InstanceCollector(IInstancePlatform platform, string sid, int session,
-    Func<double>? seconds = null) : IInstanceCollector
+    Func<double>? seconds = null, bool collectMetrics = true) : IInstanceCollector
 {
     private readonly Dictionary<ProcessKey, string> trust = [];
     private readonly Dictionary<ProcessKey, (long Cpu, double At)> samples = [];
@@ -81,12 +81,15 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
                     token.ThrowIfCancellationRequested();
                     if (!process.IsAlive) continue;
                     token.ThrowIfCancellationRequested();
-                    long? cpu = process.CpuTime();
+                    long? cpu = collectMetrics ? process.CpuTime() : null;
                     double at = clock();
                     token.ThrowIfCancellationRequested();
-                    ulong? memory = process.WorkingSet();
+                    ulong? memory = collectMetrics ? process.WorkingSet() : null;
                     token.ThrowIfCancellationRequested();
                     var windows = process.Windows();
+                    token.ThrowIfCancellationRequested();
+                    bool? anyVisibleWindow = !collectMetrics && process is IBackgroundClientProcess background
+                        ? background.HasVisibleWindow() : null;
                     token.ThrowIfCancellationRequested();
                     if (!process.IsAlive) continue;
                     token.ThrowIfCancellationRequested();
@@ -99,7 +102,7 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
                     }
                     else samples.Remove(key);
                     seen.Add(key);
-                    rows.Add(new(key, windows, percent, memory, cpu is >= 0));
+                    rows.Add(new(key, windows, percent, memory, cpu is >= 0, anyVisibleWindow));
                 }
                 catch (OperationCanceledException) { throw; }
                 catch { unavailable++; } // No arbitrary exception text or candidate identity enters logs.

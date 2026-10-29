@@ -13,6 +13,7 @@ internal static class Tests
     [STAThread]
     private static int Main(string[] args)
     {
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         if (args.FirstOrDefault() == "--fixture") return Fixture.Run();
         if (args.FirstOrDefault() == "--inspect-roblox" && args.Length == 2) return Inspect(args[1]);
         bool integration = false;
@@ -135,6 +136,9 @@ internal static class Tests
         DiagnosticsTests.Run(Run);
         LaunchNotificationTests.Run(Run);
         ActiveInstancesTests.Run(Run);
+        BackgroundClientCleanupTests.Run(Run);
+        WindowLayoutsTests.Run(Run);
+        UpdateTests.Run(Run);
         RecoveryTests.Run(Run);
         string report = requestedReport ?? Path.Combine(AppContext.BaseDirectory, "test-results.json");
         File.WriteAllText(report, JsonSerializer.Serialize(new { time = DateTimeOffset.Now, integration, elevated = RobloxLaunchHelper.Program.Elevated, failures = failed, tests = Results }, new JsonSerializerOptions { WriteIndented = true }));

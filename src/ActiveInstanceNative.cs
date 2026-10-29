@@ -21,15 +21,16 @@ internal sealed class InstancePlatform : IInstancePlatform
     public int ProcessorCount => checked((int)InstanceNative.GetActiveProcessorCount(0xffff));
 }
 
-internal sealed class InstanceProcess : IInstanceProcess
+internal sealed class InstanceProcess : IBackgroundClientProcess
 {
     private readonly SafeProcessHandle handle;
     private readonly int pid;
     public Identity Identity { get; }
-    internal InstanceProcess(int pid)
+    internal InstanceProcess(int pid, bool allowStop = false)
     {
         this.pid = pid;
-        handle = Native.OpenProcess(InstanceNative.QueryLimitedInformation | InstanceNative.Synchronize, false, pid);
+        handle = Native.OpenProcess(InstanceNative.QueryLimitedInformation | InstanceNative.Synchronize |
+            (allowStop ? 0x0001u : 0u), false, pid); // PROCESS_TERMINATE only for explicit background cleanup.
         try
         {
             if (handle.IsInvalid) throw new Win32Exception();
@@ -38,6 +39,9 @@ internal sealed class InstanceProcess : IInstanceProcess
         catch { handle.Dispose(); throw; }
     }
     public bool IsAlive => InstanceNative.WaitForSingleObject(handle, 0) == InstanceNative.WaitTimeout;
+    public bool HasVisibleWindow() => InstanceNative.HasVisibleWindow(pid);
+    public bool Stop() => InstanceNative.TerminateProcess(handle, 1);
+    public bool WaitForExit(uint milliseconds) => InstanceNative.WaitForSingleObject(handle, milliseconds) == 0;
     public long? CpuTime()
     {
         if (!InstanceNative.GetProcessTimes(handle, out _, out _, out long kernel, out long user)) return null;
@@ -77,6 +81,9 @@ internal sealed class InstanceProcess : IInstanceProcess
 
 internal static class InstanceNative
 {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
     internal const uint QueryLimitedInformation = 0x1000, Synchronize = 0x100000, WaitTimeout = 258;
     [StructLayout(LayoutKind.Sequential)]
     internal struct MemoryCounters
@@ -110,6 +117,19 @@ internal static class InstanceNative
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
     internal static extern nint SendMessageTimeout(nint window, uint message, nuint wparam, nint lparam,
         uint flags, uint milliseconds, out nuint result);
+
+    internal static bool HasVisibleWindow(int pid)
+    {
+        bool found = false;
+        EnumWindowCallback callback = (window, _) =>
+        {
+            if (GetWindowThreadProcessId(window, out int owner) != 0 && owner == pid && IsWindowVisible(window)) found = true;
+            return true;
+        };
+        if (!EnumWindows(callback, 0)) throw new Win32Exception();
+        GC.KeepAlive(callback);
+        return found;
+    }
 
     internal static bool EligibleWindow(nint window, int pid) => window != 0 &&
         GetWindowThreadProcessId(window, out int owner) != 0 && owner == pid &&
