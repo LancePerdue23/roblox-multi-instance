@@ -56,6 +56,12 @@ Reports exclude usernames, computer/domain names, SIDs, process/session IDs, per
 
 ## Diagnostics and behavior
 
+**Active instances**, opened from Diagnostics, lists verified official Roblox players for your Windows user and interactive session, including players launched outside this helper. It shows window titles, PID, process start time in local time, CPU as a percentage of total logical CPU capacity across processor groups, and working set in MiB. Working set includes shared resident pages and is not private memory. The first CPU reading shows **Sampling…**; unavailable counters are labeled instead of reported as zero. A client can appear before it creates a window.
+
+Select a client and, if it has several windows, select a window explicitly. **Focus** restores a minimized window and requests foreground activation; Windows may deny focus. **Close window…** asks for confirmation and sends a bounded, graceful close request. Roblox may prompt, ignore it, close only the selected window, or keep running; there is no force kill or automatic retry. Each action rechecks the process lifetime, owner/session, official publisher and window ownership. Windows has no atomic window-owner-check-and-send operation, so a small window-handle reuse race remains.
+
+Refresh runs two seconds after each completed collection, only while the panel is visible and not minimized. Hiding, minimizing, closing, or confirming a close pauses collection; resuming resets CPU sampling. One native/signature call already in progress may finish after cancellation, but its late result is discarded and a replacement collector waits for it. Discovery never starts the worker or closes singleton handles. Panel data stays in memory and is excluded from logs, launch history and troubleshooting reports. **Window titles do not identify or verify Roblox accounts.** Live Roblox and normal-token acceptance checks are listed in [the implementation plan](docs/active-instance-manager-plan.md); synthetic tests do not establish account/gameplay behavior.
+
 - Normal success is silent. If the worker fails, Roblox remains running and a warning identifies the logs.
 - Launcher logs: `%LOCALAPPDATA%\RobloxLaunchHelper\logs`.
 - Elevated worker logs: the installed program's `logs` folder. Each log rotates at approximately 256 KiB with one previous file retained.
