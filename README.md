@@ -1,6 +1,6 @@
 # Roblox Multi Instance
 
-Version 1.0.1 fixes browser registration when setup is launched from a registry-isolated environment. Setup and Repair now apply and verify the registration from Windows's normal user context.
+The upcoming 1.1.0 build adds a local health dashboard, recent launch results, and redacted troubleshooting exports. It retains the 1.0.1 fix that applies and verifies browser registration from Windows's normal user context, including when setup starts from a registry-isolated environment.
 
 A Windows x64 launcher that closes Roblox's `ROBLOX_singletonEvent` Event handle after each launch, allowing separate clients to remain open. It uses the official Roblox player already installed on the PC. The executable remains named `RobloxLaunchHelper.exe` for compatibility with existing installations.
 
@@ -32,6 +32,20 @@ Roblox updates may replace either launch registration or its version-specific ex
 Uninstall removes the task, owned shortcuts, and installed program files. It restores backed-up protocol keys only when they still point at this helper, preserving registrations that another installer has since changed. Small launcher diagnostic logs under `%LOCALAPPDATA%\RobloxLaunchHelper\logs` are retained for troubleshooting.
 
 Setup logs from the downloaded executable are retained under `%ProgramFiles%\RobloxLaunchHelper\setup-logs`. Repair invoked from the installed Start menu shortcut records its setup status in the installed `logs` folder.
+
+## Diagnostics dashboard and reports
+
+Open **Diagnostics** in the Start menu, or run `RobloxLaunchHelper.exe --diagnostics`, normally without administrator access. The local Windows dashboard checks installation settings, the saved Roblox player and publisher, both browser protocols, the on-demand task configuration, and effective permissions. Opening it or clicking **Refresh** does not start a worker, launch Roblox, close handles, or repair the installation. Permission inspection is read-only; an inconclusive check is **Unknown**, not a pass. Registry results describe this process's view. Setup/Repair still verifies registration in Windows's normal user context separately.
+
+**Test worker** explicitly starts or connects to the existing authenticated on-demand worker and sends only a probe. It does not scan Roblox handles; the worker exits normally when idle. A test has a 35-second total limit. Refresh and Setup/Repair invalidate its previous result. An idle worker is normal. **Repair** and **Setup** use the existing administrator approval flow only when selected. Buttons open the user, worker, and setup log folders separately.
+
+Recent results distinguish a confirmed singleton release, Roblox starting without confirmed multi-instance readiness, a failed launch, and an interrupted launcher whose completion is unknown. Confirmation does not establish account sign-in or that either account remained in-game. Existing text logs are not reconstructed as launch outcomes, so history starts with this version. Successful launches remain silent.
+
+Structured history is stored under `%LOCALAPPDATA%\RobloxLaunchHelper\diagnostics`. It retains at most 100 attempts and 30 days, with a 512 KiB store limit and 4 KiB record limit. Pruning happens only while the launcher or dashboard runs; expired files can remain on disk while the helper is unused, but expired records are excluded when accessed. Launchers wait at most 100 ms for the shared history lock. Inaccessible, busy, or invalid storage cannot prevent Roblox launching. **Clear history** removes structured history, including recovery from a corrupt store; it does not remove text logs or reports already exported. Concurrent launches may create new records afterward.
+
+**Export report** previews the included categories/counts and lets you choose a ZIP destination. The ZIP contains `summary.txt` and `diagnostics.json`: versions, current check results, the last explicitly requested worker test, UTC timestamps/durations, up to 100 recent attempts, and at most 200 approved log events. It reads at most 512 KiB per known log source pair and limits uncompressed report contents to 1 MiB. Missing or truncated sources are listed as omissions; export never silently starts a new worker test.
+
+Reports exclude usernames, computer/domain names, SIDs, process/session IDs, persistent attempt IDs, full paths, launch URLs/tickets, cookies, account/game identifiers, raw commands, registry backups, stack traces, arbitrary exception text, and raw log attachments. Export uses approved fields and event codes rather than trying to scrub arbitrary log text. Versions that are not simple numeric versions are omitted as unknown. Local history uses a random attempt ID and transient launcher PID/creation time to distinguish interrupted attempts; those identifiers are not exported. Review reports before sharing: timestamps and launch activity can still be sensitive. Nothing is uploaded or copied to the clipboard. Delete exported ZIPs yourself; clearing history does not delete them. Runtime data and exports must remain outside commits.
 
 ## Diagnostics and behavior
 

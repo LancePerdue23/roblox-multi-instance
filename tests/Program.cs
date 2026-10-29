@@ -10,6 +10,7 @@ internal static class Tests
 {
     private static readonly List<object> Results = [];
     private static int failed;
+    [STAThread]
     private static int Main(string[] args)
     {
         if (args.FirstOrDefault() == "--fixture") return Fixture.Run();
@@ -131,6 +132,7 @@ internal static class Tests
             Check(invalid.IsInvalid);
             Throws<System.ComponentModel.Win32Exception>(() => Native.GetIdentity(int.MaxValue));
         });
+        DiagnosticsTests.Run(Run);
         string report = requestedReport ?? Path.Combine(AppContext.BaseDirectory, "test-results.json");
         File.WriteAllText(report, JsonSerializer.Serialize(new { time = DateTimeOffset.Now, integration, elevated = RobloxLaunchHelper.Program.Elevated, failures = failed, tests = Results }, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"{Results.Count - failed}/{Results.Count} tests passed. Report: {report}");

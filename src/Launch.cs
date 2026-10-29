@@ -59,25 +59,27 @@ internal static class Launch
         return result;
     }
 
-    internal static async Task<NamedPipeClientStream> ConnectAsync()
+    internal static async Task<NamedPipeClientStream> ConnectAsync(CancellationToken token = default)
     {
         var deadline = Environment.TickCount64 + 12000;
         long lastRequest = 0;
         while (Environment.TickCount64 < deadline)
         {
+            token.ThrowIfCancellationRequested();
             var client = new NamedPipeClientStream(".", Program.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous,
                 System.Security.Principal.TokenImpersonationLevel.Identification);
             try
             {
-                await client.ConnectAsync(350);
+                await client.ConnectAsync(350, token);
                 Protocol.VerifyServer(client);
                 return client;
             }
             catch (TimeoutException) { client.Dispose(); }
             catch (IOException) { client.Dispose(); }
             catch { client.Dispose(); throw; }
+            token.ThrowIfCancellationRequested();
             if (Environment.TickCount64 - lastRequest >= 1000) { ScheduledWorker.Start(); lastRequest = Environment.TickCount64; }
-            await Task.Delay(100);
+            await Task.Delay(100, token);
         }
         throw new UserError("The administrator helper did not start. Run Repair from the Start menu. Roblox can still launch normally.");
     }
@@ -102,17 +104,32 @@ internal static class Launch
 
     internal static async Task<int> RunAsync(string? uri)
     {
-        Log.Write("launch-requested", uri is null ? "desktop" : uri.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) ? "roblox-player" : "roblox", Environment.ProcessId);
+        // Do not write per-user diagnostic data from an elevated launch attempt.
         if (Program.Elevated) throw new UserError("Launch Roblox normally, without Run as administrator. Only setup and the handle helper need administrator access.");
+        using var attempt = new LaunchAttempt(uri);
+        try { return await RunCoreAsync(uri, attempt); }
+        catch (Exception e) { attempt.Error(e.HResult); throw; }
+    }
+
+    private static async Task<int> RunCoreAsync(string? uri, LaunchAttempt attempt)
+    {
+        Log.Write("launch-requested", uri is null ? "desktop" : uri.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) ? "roblox-player" : "roblox", Environment.ProcessId);
+        attempt.Complete(LaunchOutcome.Failed, DiagnosticCode.InvalidConfig);
         var config = Installation.ReadConfig();
         if (config.OwnerSid != Program.Sid) throw new UserError("This installation belongs to another Windows account.");
         string scheme = uri?.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) != false ? "roblox-player" : "roblox";
         if (!config.Commands.TryGetValue(scheme, out string? command)) command = config.Commands["roblox-player"];
         var start = BuildStart(command, uri);
-        if (!File.Exists(start.FileName)) throw new UserError("Roblox's saved executable is missing, usually after an update. Launch or reinstall Roblox normally, then run Roblox Launch Helper Repair.");
+        if (!File.Exists(start.FileName))
+        {
+            attempt.Complete(LaunchOutcome.Failed, DiagnosticCode.PlayerMissing);
+            throw new UserError("Roblox's saved executable is missing, usually after an update. Launch or reinstall Roblox normally, then run Roblox Launch Helper Repair.");
+        }
+        attempt.Complete(LaunchOutcome.Failed, DiagnosticCode.SignatureRejected);
         if (!RobloxTrust.IsSignedRoblox(start.FileName)) throw new UserError("The saved Roblox executable did not pass its Roblox signature check. Repair or reinstall Roblox before trying again.");
         NamedPipeClientStream? pipe = null;
         string? helperError = null;
+        DiagnosticCode warningCode = DiagnosticCode.CompletionUnconfirmed;
         using var timeout = new CancellationTokenSource(90000);
         try
         {
@@ -125,10 +142,15 @@ internal static class Launch
             catch (Exception e)
             {
                 helperError = "The administrator helper was unavailable. Run Repair before opening another instance.";
+                attempt.Error(e.HResult);
+                warningCode = DiagnosticCode.WorkerUnavailable;
                 Log.Write("worker-unavailable", e.GetType().Name, e.HResult);
                 pipe?.Dispose(); pipe = null;
             }
+            attempt.Complete(LaunchOutcome.Failed, DiagnosticCode.ProcessStartFailed);
             using var game = Process.Start(start) ?? throw new UserError("Roblox could not start. Run Repair.");
+            attempt.Started();
+            attempt.Complete(LaunchOutcome.Warning, DiagnosticCode.CompletionUnconfirmed);
             Log.Write("roblox-launched", "", game.Id);
             if (pipe is not null)
             {
@@ -136,10 +158,15 @@ internal static class Launch
                 {
                     await Protocol.WriteAsync(pipe, "STARTED", timeout.Token);
                     string result = await Protocol.ReadAsync(pipe, timeout.Token);
-                    if (result != "OK") helperError = "The singleton event could not be confirmed closed within 60 seconds. Roblox was left running. Check diagnostics before opening another instance.";
+                    if (result != "OK")
+                    {
+                        warningCode = result == "TIMEOUT" ? DiagnosticCode.WorkerTimeout : DiagnosticCode.CompletionUnconfirmed;
+                        helperError = DiagnosticMessages.Text(warningCode);
+                    }
                 }
                 catch (Exception e)
                 {
+                    attempt.Error(e.HResult);
                     helperError = "The helper could not confirm completion. Roblox was left running. Check diagnostics or run Repair.";
                     Log.Write("worker-result-failed", e.GetType().Name, e.HResult);
                 }
@@ -148,11 +175,13 @@ internal static class Launch
         finally { pipe?.Dispose(); }
         if (helperError is not null)
         {
+            attempt.Complete(LaunchOutcome.Warning, warningCode);
             Log.Write("launch-warning");
             MessageBox.Show(helperError + "\n\nDiagnostics: " + Log.DirectoryPath + "\nWorker logs: " + Path.Combine(Program.InstallDirectory, "logs"),
                 "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return 1;
         }
+        attempt.Complete(LaunchOutcome.Confirmed, DiagnosticCode.LaunchConfirmed);
         return 0;
     }
 }

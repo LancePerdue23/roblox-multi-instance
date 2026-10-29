@@ -75,7 +75,10 @@ internal static class Program
             }
             if (mode == "--diagnostics")
             {
-                Process.Start(new ProcessStartInfo("explorer.exe", Log.DirectoryPath) { UseShellExecute = true });
+                if (args.Length != 1) throw new UserError("Unexpected diagnostics argument.");
+                if (Elevated) throw new UserError("Open Diagnostics normally, without Run as administrator, so checks use your normal Windows permissions.");
+                Application.EnableVisualStyles();
+                Application.Run(new DiagnosticsForm());
                 return 0;
             }
             if (args.Length > 1 || (args.Length == 1 && !Launch.IsRobloxUri(args[0])))
@@ -91,7 +94,6 @@ internal static class Program
         catch (Exception e)
         {
             Log.Write("operation-failed", e.GetType().Name + (e is System.ComponentModel.Win32Exception native ? ":win32=" + native.NativeErrorCode : ""), e.HResult);
-            if (args.FirstOrDefault() is "--admin" or "--setup" or "--repair") Log.Write("setup-stack", e.StackTrace?.Replace(Environment.NewLine, " | ") ?? "");
             if (args.FirstOrDefault() is not ("--worker" or "--verify" or "--verify-protocols"))
                 MessageBox.Show(e is UserError ? e.Message : FriendlyError(e), "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return 1;

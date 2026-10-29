@@ -44,6 +44,8 @@ logs/
 *trace*.json
 *.ready
 roblox-handles.txt
+diagnostics/
+RobloxMultiInstance-report*.zip
 
 # OS files
 Thumbs.db

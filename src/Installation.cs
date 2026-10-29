@@ -87,7 +87,7 @@ internal static class Installation
         catch (UnauthorizedAccessException) { return; }
         throw new InvalidOperationException("The installation directory is writable without elevation.");
     }
-    private static bool IsWrapper(string? command) => string.Equals(command, WrapperCommand, StringComparison.OrdinalIgnoreCase);
+    private static bool IsWrapper(string? command) => DiagnosticChecks.ProtocolMatches(command);
 
     internal static int ExecuteInWindowsContext(string action, string owner)
     {
@@ -181,7 +181,6 @@ internal static class Installation
         catch (Exception setupError)
         {
             Log.Write("setup-rollback", setupError.GetType().Name + (setupError is Win32Exception native ? ":win32=" + native.NativeErrorCode : ""), setupError.HResult);
-            Log.Write("setup-rollback-stack", setupError.StackTrace?.Replace(Environment.NewLine, " | ") ?? "");
             if (protocolsChanged)
             {
                 foreach (string scheme in Schemes) RestoreProtocol(scheme, before[scheme]);

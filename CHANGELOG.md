@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a local Diagnostics dashboard with explicit worker testing and existing Setup/Repair actions.
+- Record bounded recent-launch outcomes and export allowlisted troubleshooting ZIPs without raw logs or identifying launch data.
+- Preserve silent launches and the on-demand worker lifecycle; remove raw setup stack traces from future logs.
+- Set the upcoming executable version to 1.1.0 so the dashboard can identify older installed helpers.
 - Prepare the project for standalone Git development.
 - Separate default tests from opt-in Windows/Roblox integration tests.
 - Add portable build scripts and a Windows build workflow template.
