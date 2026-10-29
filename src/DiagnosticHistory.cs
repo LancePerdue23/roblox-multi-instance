@@ -116,23 +116,47 @@ internal sealed class DiagnosticHistory
 
 internal sealed class LaunchAttempt : IDisposable
 {
-    private readonly DiagnosticHistory history = new();
+    private readonly DiagnosticHistory history;
+    private readonly LaunchNotificationPublisher publisher;
     private readonly Stopwatch elapsed = Stopwatch.StartNew();
     private LaunchResult result;
-    internal LaunchAttempt(string? uri)
+    private LaunchOutcome fallbackOutcome = LaunchOutcome.Failed;
+    private DiagnosticCode fallbackCode = DiagnosticCode.LaunchFailed;
+    private Task<bool>? finished;
+    internal LaunchAttempt(string? uri, DiagnosticHistory? history = null, LaunchNotificationPublisher? publisher = null)
     {
+        this.history = history ?? new(); this.publisher = publisher ?? new();
         using var p = Process.GetCurrentProcess();
         result = new(1, Guid.NewGuid(), DateTimeOffset.UtcNow, null, null,
             uri is null ? LaunchSource.Desktop : uri.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) ? LaunchSource.RobloxPlayer : LaunchSource.Roblox,
             null, LaunchOutcome.InProgress, DiagnosticCode.LaunchStarting, null, p.Id, p.StartTime.ToUniversalTime().Ticks);
-        history.Begin(result);
+        this.history.Begin(result);
+        this.publisher.Publish(LaunchStatus.From(result, 1));
     }
-    internal void Started() => result = result with { RobloxStarted = true };
+    internal void Started()
+    {
+        if (finished is not null) return;
+        result = result with { RobloxStarted = true };
+        publisher.Publish(LaunchStatus.From(result, 2));
+    }
     internal void Error(int code) => result = result with { ErrorCode = code };
-    internal void Complete(LaunchOutcome outcome, DiagnosticCode code, int? error = null) => result = result with { Outcome = outcome, Code = code, ErrorCode = error ?? result.ErrorCode };
+    internal void SetFallback(LaunchOutcome outcome, DiagnosticCode code) { fallbackOutcome = outcome; fallbackCode = code; }
+    internal void Complete(LaunchOutcome outcome, DiagnosticCode code, int? error = null)
+    {
+        if (finished is null) result = result with { Outcome = outcome, Code = code, ErrorCode = error ?? result.ErrorCode };
+    }
+    internal Task<bool> FinishAsync() => finished ??= FinishCoreAsync();
+    private Task<bool> FinishCoreAsync()
+    {
+        if (result.Outcome == LaunchOutcome.InProgress) result = result with { Outcome = fallbackOutcome, Code = fallbackCode };
+        result = result with { EndedUtc = DateTimeOffset.UtcNow < result.StartedUtc ? result.StartedUtc : DateTimeOffset.UtcNow,
+            DurationMs = elapsed.ElapsedMilliseconds, RobloxStarted = result.RobloxStarted ?? false };
+        history.Finish(result);
+        return publisher.FinishAsync(LaunchStatus.From(result, 3));
+    }
     public void Dispose()
     {
-        if (result.Outcome == LaunchOutcome.InProgress) result = result with { Outcome = LaunchOutcome.Failed, Code = DiagnosticCode.LaunchFailed };
-        history.Finish(result with { EndedUtc = DateTimeOffset.UtcNow < result.StartedUtc ? result.StartedUtc : DateTimeOffset.UtcNow, DurationMs = elapsed.ElapsedMilliseconds, RobloxStarted = result.RobloxStarted ?? false });
+        // All normal and exception paths await final delivery before disposal.
+        _ = FinishAsync();
     }
 }

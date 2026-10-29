@@ -26,6 +26,11 @@ internal static class Program
         try
         {
             string mode = args.FirstOrDefault() ?? "";
+            if (mode == "--launch-notifications")
+            {
+                if (args.Length != 1) return 2;
+                return LaunchNotificationHost.Run();
+            }
             if (mode == "--worker")
             {
                 if (args.Length != 1 || !Elevated || !IsInstalledExecutable()) return 2;
@@ -95,7 +100,7 @@ internal static class Program
         catch (Exception e)
         {
             Log.Write("operation-failed", e.GetType().Name + (e is System.ComponentModel.Win32Exception native ? ":win32=" + native.NativeErrorCode : ""), e.HResult);
-            if (args.FirstOrDefault() is not ("--worker" or "--verify" or "--verify-protocols"))
+            if (args.FirstOrDefault() is not ("--worker" or "--verify" or "--verify-protocols" or "--launch-notifications"))
                 MessageBox.Show(e is UserError ? e.Message : FriendlyError(e), "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return 1;
         }

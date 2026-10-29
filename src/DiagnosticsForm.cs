@@ -45,6 +45,7 @@ internal sealed class DiagnosticsForm : Form
             if (activeInstances.WindowState == FormWindowState.Minimized) activeInstances.WindowState = FormWindowState.Normal;
             activeInstances.Activate();
         });
+        AddButton("Launch notifications…", () => { using var form = new NotificationSettingsForm(); form.ShowDialog(this); return Task.CompletedTask; });
         AddButton("User &logs", () => OpenLogsAsync(0)); AddButton("&Worker logs", () => OpenLogsAsync(1)); AddButton("Setup l&ogs", () => OpenLogsAsync(2));
         checks.SelectedIndexChanged += (_, _) => { if (checks.SelectedItems.Count > 0) detail.Text = checks.SelectedItems[0].Tag as string ?? ""; };
         launches.SelectedIndexChanged += (_, _) => { if (launches.SelectedItems.Count > 0) detail.Text = launches.SelectedItems[0].Tag as string ?? ""; };
@@ -99,7 +100,7 @@ internal sealed class DiagnosticsForm : Form
         launches.Items.Clear();
         foreach (var launch in recent)
         {
-            string message = DiagnosticMessages.Text(launch.Code);
+            string message = LaunchStatusText.Text(launch.Outcome, launch.Code, launch.RobloxStarted);
             var row = new ListViewItem([launch.StartedUtc.LocalDateTime.ToString("g"), launch.Source.ToString(), launch.Outcome.ToString(), message]);
             row.Tag = $"{message}\r\nStarted: {launch.StartedUtc:O}\r\nEnded: {launch.EndedUtc:O}\r\nElapsed ms: {launch.DurationMs}\r\nRoblox started: {launch.RobloxStarted?.ToString() ?? "Unknown"}\r\nError code: {launch.ErrorCode}";
             launches.Items.Add(row);

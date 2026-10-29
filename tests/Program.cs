@@ -133,6 +133,7 @@ internal static class Tests
             Throws<System.ComponentModel.Win32Exception>(() => Native.GetIdentity(int.MaxValue));
         });
         DiagnosticsTests.Run(Run);
+        LaunchNotificationTests.Run(Run);
         ActiveInstancesTests.Run(Run);
         RecoveryTests.Run(Run);
         string report = requestedReport ?? Path.Combine(AppContext.BaseDirectory, "test-results.json");

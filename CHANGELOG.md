@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add optional launch progress and confirmed-helper completion feedback, both off by default, using the shared launch-status model without inferring account sign-in or game entry.
+- Group overlapping launch feedback in a temporary, authenticated normal-user notification host with bounded delivery, deduplication, popup limits, and local warning fallback. Finalize launch history before warning presentation.
 - Add a visible-only Active instances panel with window titles, local process start times, per-client CPU/working set, focus, and confirmed graceful close requests.
 - Bind player sessions to process tokens, revalidate actions against PID/creation-time identities and window ownership, and keep transient instance data out of logs/history/reports.
 
