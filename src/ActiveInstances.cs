@@ -5,7 +5,7 @@ namespace RobloxLaunchHelper;
 // Transient UI data only: deliberately absent from diagnostic history/report models.
 internal sealed record InstanceWindow(nint Handle, string Title);
 internal sealed record ActiveInstance(ProcessKey Key, InstanceWindow[] Windows, double? CpuPercent,
-    ulong? WorkingSet, bool CpuAvailable, bool? AnyVisibleWindow = null);
+    ulong? WorkingSet, bool CpuAvailable, bool? AnyVisibleWindow = null, string? Username = null);
 internal sealed record InstanceSnapshot(ActiveInstance[] Instances, int Unavailable, bool Available = true)
 {
     internal static readonly InstanceSnapshot Failed = new([], 0, false);
@@ -51,6 +51,7 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
     Func<double>? seconds = null, bool collectMetrics = true) : IInstanceCollector
 {
     private readonly Dictionary<ProcessKey, string> trust = [];
+    private readonly InstanceAccounts accounts = new();
     private readonly Dictionary<ProcessKey, (long Cpu, double At)> samples = [];
     private readonly Func<double> clock = seconds ?? (() => (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency);
 
@@ -102,13 +103,17 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
                     }
                     else samples.Remove(key);
                     seen.Add(key);
-                    rows.Add(new(key, windows, percent, memory, cpu is >= 0, anyVisibleWindow));
+                    string? username = collectMetrics && platform is InstancePlatform ? accounts.Resolve(key,token) : null;
+                    token.ThrowIfCancellationRequested();
+                    if (!process.IsAlive) continue;
+                    rows.Add(new(key, windows, percent, memory, cpu is >= 0, anyVisibleWindow,username));
                 }
                 catch (OperationCanceledException) { throw; }
                 catch { unavailable++; } // No arbitrary exception text or candidate identity enters logs.
             }
             foreach (var key in trust.Keys.Where(k => !seen.Contains(k)).ToArray()) trust.Remove(key);
             foreach (var key in samples.Keys.Where(k => !seen.Contains(k)).ToArray()) samples.Remove(key);
+            accounts.Retain(seen);
             return new(rows.OrderBy(x => x.Key.Created).ThenBy(x => x.Key.Id).ToArray(), unavailable);
         }
         catch (OperationCanceledException) { trust.Clear(); samples.Clear(); throw; }

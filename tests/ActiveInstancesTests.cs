@@ -14,6 +14,46 @@ internal static class ActiveInstancesTests
 
     internal static void Run(Action<string, Action> run)
     {
+        run("Account labels resolve ID-only join logs and distinguish restarted processes", () =>
+        {
+            var time=DateTime.UtcNow;
+            var first=new ProcessKey(42,Created);
+            var restarted=new ProcessKey(42,Created+1);
+            string log="";
+            int requests=0;
+            var accounts=new InstanceAccounts((_,_)=>[log],(id,_)=> { requests++; return id==123?"SyntheticOne":"SyntheticTwo"; },()=>time);
+            Check(accounts.Resolve(first,default) is null);
+            log="[FLog::GameJoinLoadTime] Report game_join_loadtime: placeid:999, userid:123, ";
+            time=time.AddSeconds(11);
+            Check(accounts.Resolve(first,default)=="SyntheticOne" && requests==1);
+            accounts.Resolve(first,default); Check(requests==1);
+            log="[FLog::GameJoinLoadTime] Report game_join_loadtime: userid:456, ";
+            Check(accounts.Resolve(restarted,default)=="SyntheticTwo" && requests==2);
+            accounts.Retain([restarted]);
+            Check(accounts.Resolve(first,default)=="SyntheticTwo" && requests==3);
+            Check(InstanceAccounts.ParseUserId("[FLog::Output] userid:123,") is null);
+            Check(InstanceAccounts.ParseUserId("[FLog::GameJoinLoadTime] userid:0,") is null);
+            Check(InstanceAccounts.ParseUserId("[FLog::GameJoinLoadTime] userid:9999999999999999999,") is null);
+            Check(InstanceAccounts.Parse("%22UserName%22%3A%22SyntheticOne%22")=="SyntheticOne");
+        });
+        run("Account lookup failures retry without hiding clients; cancellation propagates", () =>
+        {
+            var time=DateTime.UtcNow;
+            int requests=0;
+            var accounts=new InstanceAccounts((_,_)=>["[FLog::GameJoinLoadTime] userid:123,"],(_,_)=>
+            { if(++requests==1) throw new TaskCanceledException(); return "SyntheticOne"; },()=>time);
+            Check(accounts.Resolve(Target.Key,default) is null);
+            time=time.AddSeconds(11);
+            Check(accounts.Resolve(Target.Key,default)=="SyntheticOne");
+            using var cancellation=new CancellationTokenSource(); cancellation.Cancel();
+            bool canceled=false;
+            try { new InstanceAccounts((_,_)=>["text"]).Resolve(Target.Key,cancellation.Token); }
+            catch(OperationCanceledException) { canceled=true; }
+            Check(canceled);
+            using var profile=System.Text.Json.JsonDocument.Parse("{\"id\":123,\"name\":\"SyntheticOne\",\"displayName\":\"Other\"}");
+            Check(InstanceAccounts.ParseProfile(profile.RootElement,123)=="SyntheticOne");
+            Check(InstanceAccounts.ParseProfile(profile.RootElement,456) is null);
+        });
         run("Background observation skips CPU and memory sampling", () =>
         {
             var platform = new FakePlatform { ErrorStage = "cpu" };

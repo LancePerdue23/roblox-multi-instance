@@ -107,9 +107,9 @@ internal sealed class ActiveInstancesForm : Form
     private ProcessKey? SelectedKey => clients.SelectedItems.Count == 1 ? clients.SelectedItems[0].Tag as ProcessKey? : null;
     internal InstanceTarget? SelectedTarget => windows.SelectedItem is WindowChoice choice && SelectedKey is ProcessKey key
         ? new(key, choice.Window.Handle) : null;
-    private sealed record WindowChoice(InstanceWindow Window, int Number)
+    private sealed record WindowChoice(InstanceWindow Window, int Number, string? Username = null)
     {
-        public string Label => $"Window {Number}: {Caption(Window.Title)}";
+        public string Label => $"Window {Number}: {(Username is null ? Caption(Window.Title) : "Roblox - "+Username)}";
     }
     private static string Caption(string text) => string.IsNullOrWhiteSpace(text) ? "Untitled window" :
         new string(text.Select(c => char.IsControl(c) ? ' ' : c).ToArray());
@@ -134,7 +134,7 @@ internal sealed class ActiveInstancesForm : Form
             clients.Items.Clear();
             foreach (var client in result.Instances)
             {
-                var row = new ListViewItem([client.Windows.Length == 0 ? "No visible window" :
+                var row = new ListViewItem([client.Username is not null ? "Roblox - "+client.Username : client.Windows.Length == 0 ? "No visible window" :
                     string.Join(" | ", client.Windows.Select(w => Caption(w.Title))), client.Key.Id.ToString(),
                     InstancePolicy.Started(client.Key).ToString("g"), client.CpuPercent?.ToString("F1") ??
                         (client.CpuAvailable ? "Sampling…" : "Unavailable"),
@@ -158,7 +158,7 @@ internal sealed class ActiveInstancesForm : Form
         var client = snapshot.Instances.FirstOrDefault(x => x.Key == SelectedKey);
         if (snapshot.Available && client is not null)
         {
-            for (int i = 0; i < client.Windows.Length; i++) windows.Items.Add(new WindowChoice(client.Windows[i], i + 1));
+            for (int i = 0; i < client.Windows.Length; i++) windows.Items.Add(new WindowChoice(client.Windows[i], i + 1, client.Username));
             int index = preserve is InstanceTarget target && target.Key == client.Key
                 ? Array.FindIndex(client.Windows, w => w.Handle == target.Window) : -1;
             // After a refresh, a vanished selected window must not silently retarget.
