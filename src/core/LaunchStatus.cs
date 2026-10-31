@@ -62,7 +62,7 @@ internal sealed record LaunchStatus(Guid AttemptId, int Revision, int OwnerPid, 
             LaunchOutcome.InProgress => Code == DiagnosticCode.LaunchStarting,
             LaunchOutcome.Confirmed => Code == DiagnosticCode.LaunchConfirmed && RobloxStarted == true,
             LaunchOutcome.Warning => RobloxStarted == true && Code is DiagnosticCode.WorkerUnavailable or DiagnosticCode.WorkerTimeout or DiagnosticCode.CompletionUnconfirmed,
-            LaunchOutcome.Failed => Code is DiagnosticCode.LaunchFailed or DiagnosticCode.InvalidConfig or DiagnosticCode.WrongAccount or DiagnosticCode.PlayerMissing or DiagnosticCode.SignatureRejected or DiagnosticCode.ProcessStartFailed,
+            LaunchOutcome.Failed => Code is DiagnosticCode.LaunchFailed or DiagnosticCode.InvalidConfig or DiagnosticCode.WrongAccount or DiagnosticCode.PlayerMissing or DiagnosticCode.SignatureRejected or DiagnosticCode.ProcessStartFailed or DiagnosticCode.PlayerExited,
             LaunchOutcome.Incomplete => Code == DiagnosticCode.Interrupted && RobloxStarted is null,
             _ => false
         });

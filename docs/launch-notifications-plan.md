@@ -1,3 +1,5 @@
+> Historical feature validation notes. Current desktop testing uses root Test.ps1 and Audit.ps1; shared/helper checks use Test-Shared.ps1 (including -Integration when explicitly required). Retired UI instructions below are historical. See [milestone audit](milestone-audit.md).
+
 # Optional launch notifications plan
 
 Status: implemented locally. Automated model, transport, history, preference, and UI checks cover the implementation; live Roblox/browser and Windows notification-suppression acceptance remains manual. Successful launches remain silent by default. See `docs/diagnostics-validation.md` for installed acceptance.

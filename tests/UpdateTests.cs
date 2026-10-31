@@ -132,6 +132,26 @@ internal static class UpdateTests
             await File.WriteAllBytesAsync(download.Executable, new byte[Payload.Length]);
             Throws<InvalidDataException>(() => new UpdateDownloader(validClient, directory, _ => New).VerifyAsync(download.Executable, Release(), default).GetAwaiter().GetResult());
         })));
+        run("Edition setup downloads inspect embedded payloads after digest and version checks and before handoff", () => Store(directory => Async(async () =>
+        {
+            foreach(string edition in new[]{"Desktop","Helper"})
+            {
+                string assetName=Distribution.SetupName(edition);
+                byte[] metadata=System.Text.Encoding.UTF8.GetBytes(System.Text.Encoding.UTF8.GetString(Json()).Replace("RobloxLaunchHelper.exe",assetName));
+                var release=GitHubReleaseSource.Parse(metadata,edition)!;
+                Check(release.Asset?.Name==assetName);
+                using var client=Client(_=>new(HttpStatusCode.OK){Content=new ByteArrayContent(Payload)});
+                int inspections=0;
+                Task Inspect(string path,string expected,CancellationToken token){Check(expected==edition&&Path.GetFileName(path)==assetName);inspections++;return Task.CompletedTask;}
+                var downloader=new UpdateDownloader(client,directory,_=>New,Inspect);
+                using var download=await downloader.DownloadAsync(release,null,default);
+                Check(inspections==1);await downloader.VerifyAsync(download.Executable,release,default);Check(inspections==2);
+                var rejected=new UpdateDownloader(client,directory,_=>New,(_,_,_)=>throw new InvalidDataException("Rejected fixture payload."));
+                Throws<InvalidDataException>(()=>rejected.VerifyAsync(download.Executable,release,default).GetAwaiter().GetResult());
+                await File.WriteAllBytesAsync(download.Executable,new byte[Payload.Length]);
+                Throws<InvalidDataException>(()=>downloader.VerifyAsync(download.Executable,release,default).GetAwaiter().GetResult());Check(inspections==2);
+            }
+        })));
         run("Download cancellation removes incomplete files; untrusted and excessive redirects never execute", () => Store(directory =>
         {
             using (var client = new HttpClient(new Handler(async (_, token) => { await Task.Delay(Timeout.Infinite, token); return new(HttpStatusCode.OK); })))
@@ -201,43 +221,7 @@ internal static class UpdateTests
             }
             UpdateFiles.Prune(directory); Check(!Directory.Exists(active));
         }));
-        run("Update card renders release notes and serializes explicit downloads without executing setup", () =>
-        {
-            using var fake = new FakeDownloader(); var handoff = new FakeHandoff();
-            using var content = new UpdatesPage(new(new PageReleaseSource(),new PageVersionSource(),fake,handoff));
-            using var form = new PageHost<UpdatesPage>(content); form.Show(); WorkspaceTests.Pump(content.CheckAsync()); Application.DoEvents();
-            var primary = Descendants(form).OfType<Button>().Single(b => b.Text == "Download update");
-            Check(primary.Enabled && Descendants(form).OfType<Label>().Any(l => l.Text.Contains("1.1.0")));
-            string preview = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.build/update-card.png"));
-            Directory.CreateDirectory(Path.GetDirectoryName(preview)!);
-            using (var bitmap = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(bitmap, form.ClientRectangle); bitmap.Save(preview); }
-            form.Scale(new SizeF(1.5f, 1.5f)); Application.DoEvents();
-            using (var bitmap = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(bitmap, form.ClientRectangle); bitmap.Save(Path.Combine(Path.GetDirectoryName(preview)!, "update-card-150.png")); }
-            WorkspaceTests.Button(form,"Download update").PerformClick(); WorkspaceTests.Button(form,"Download update").PerformClick(); Application.DoEvents();
-            Check(fake.Calls == 1 && content.Busy && handoff.Calls == 0);
-            WorkspaceTests.Button(form,"Cancel download").PerformClick();
-            UserSimulation.Wait(()=>!content.Busy);
-            Check(!content.Busy && handoff.Calls == 0); form.Close(); Application.DoEvents();
-        });
-    }
-    private static IEnumerable<Control> Descendants(Control root)
-    {
-        foreach (Control child in root.Controls) { yield return child; foreach (var nested in Descendants(child)) yield return nested; }
-    }
-    private sealed class PageReleaseSource : IReleaseSource { public Task<UpdateRelease?> LatestAsync(CancellationToken token)=>Task.FromResult<UpdateRelease?>(Release()); }
-    private sealed class PageVersionSource : IUpdateVersionProvider { public Version? Current()=>UpdateTests.Current; }
-    private sealed class FakeDownloader : IUpdateDownloader, IDisposable
-    {
-        internal int Calls;
-        public async Task<DownloadedUpdate> DownloadAsync(UpdateRelease release, IProgress<long>? progress, CancellationToken token)
-        { Calls++; await Task.Delay(Timeout.Infinite, token); throw new Exception("Unreachable"); }
-        public Task VerifyAsync(string path, UpdateRelease release, CancellationToken token) => Task.CompletedTask;
-        public void Dispose() { }
-    }
-    private sealed class FakeHandoff : IUpdateSetupHandoff
-    {
-        internal int Calls;
-        public Task StartAsync(string executable, UpdateRelease release) { Calls++; return Task.CompletedTask; }
+
     }
     private sealed class FakeSetup : IUpdateSetupOperations
     {

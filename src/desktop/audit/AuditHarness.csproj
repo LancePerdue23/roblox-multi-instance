@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings><Nullable>enable</Nullable>
+    <AssemblyName>RobloxMultiInstance</AssemblyName>
+    <StartupObject>RobloxMultiInstance.Desktop.AuditEntry</StartupObject>
+    <ApplicationManifest>../host/app.manifest</ApplicationManifest><NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System" /><Using Include="System.Collections.Generic" /><Using Include="System.Linq" />
+    <Using Include="System.Threading" /><Using Include="System.Threading.Tasks" />
+    <Compile Include="../host/MainWindow.cs" Link="MainWindow.cs" />
+    <Compile Include="../host/WindowTheme.cs" Link="WindowTheme.cs" />
+    <Compile Include="../host/ShortcutOwner.cs" Link="ShortcutOwner.cs" />
+    <Compile Include="../host/BridgeProtocol.cs" Link="BridgeProtocol.cs" />
+    <Resource Include="../host/app.ico" Link="app.ico" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <ProjectReference Include="../backend/RobloxMultiInstance.Backend.csproj" />
+  </ItemGroup>
+</Project>

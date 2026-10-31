@@ -57,6 +57,13 @@ internal sealed class InstallConfig
 
 internal static partial class Installation
 {
+    internal static void PrepareProtectedDirectory(string path)
+    {
+        if(!Program.Elevated)throw new UnauthorizedAccessException();
+        string root=Path.GetFullPath(Program.InstallRoot),full=Path.GetFullPath(path);
+        if(full!=root&&!full.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Invalid setup directory.");
+        ProtectDirectory(root,true);ProtectDirectory(full,false);
+    }
     internal static readonly string[] Schemes = ["roblox-player", "roblox"];
     internal static string WrapperCommand => $"\"{Program.InstalledExe}\" \"%1\"";
     internal static string ProtocolPath(string scheme) => @"Software\Classes\" + scheme;
@@ -144,7 +151,7 @@ internal static partial class Installation
 
     private static void CopyPayload()
     {
-        if (Program.IsInstalledExecutable()) return;
+        if (Program.IsInstalledExecutable() || File.Exists(Distribution.MetadataPath)) return;
         string source = AppContext.BaseDirectory;
         foreach (string path in Directory.EnumerateFiles(source))
         {
@@ -183,8 +190,8 @@ internal static partial class Installation
         ScheduledWorker.Remove();
         ShellAssociations.NotifyChanged();
         RunUnelevated("--shortcuts remove", TimeSpan.FromSeconds(15));
+        string pending=Path.Combine(Program.InstallDirectory,"uninstall.pending");File.WriteAllText(pending,"1");ProtectFile(pending);
         ScheduleCleanup();
-        MessageBox.Show("The task and launch integration have been removed. Program files will be removed after this window closes.", "Roblox Launch Helper");
     }
 
     private static void ScheduleCleanup()
@@ -196,7 +203,7 @@ internal static partial class Installation
         // A hidden, short-lived cleanup process waits for this executable to exit.
         string safeDirectory = directory.Replace("'", "''");
         string script = $"$ErrorActionPreference='Stop'; Wait-Process -Id {Environment.ProcessId} -ErrorAction SilentlyContinue; " +
-            $"$target='{safeDirectory}'; for ($attempt=0; $attempt -lt 20; $attempt++) {{ if (-not (Test-Path -LiteralPath $target)) {{ break }}; " +
+            $"$target='{safeDirectory}'; for ($attempt=0; $attempt -lt 240; $attempt++) {{ if (-not (Test-Path -LiteralPath $target)) {{ break }}; " +
             "if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { break }; " +
             "try { Remove-Item -LiteralPath $target -Recurse -Force; break } catch { Start-Sleep -Milliseconds 500 } }";
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"))
@@ -208,6 +215,7 @@ internal static partial class Installation
     internal static void Shortcuts(bool remove)
     {
         if (Program.Elevated) throw new InvalidOperationException("Shortcut creation must run without elevation.");
+        if(File.Exists(Distribution.MetadataPath))Distribution.RegisterCommands(remove);
         string menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Roblox Launch Helper");
         string desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Roblox Multi Instance.lnk");
         if (remove)
@@ -218,7 +226,7 @@ internal static partial class Installation
             return;
         }
         Directory.CreateDirectory(menu);
-        SaveShortcut(desktop, "");
+        if(Distribution.Installed()?.Edition!="Helper")SaveShortcut(desktop, "");
         SaveShortcut(Path.Combine(menu, "Repair.lnk"), "--repair");
         SaveShortcut(Path.Combine(menu, "Uninstall.lnk"), "--uninstall");
         SaveShortcut(Path.Combine(menu, "Diagnostics.lnk"), "--diagnostics");
@@ -227,14 +235,19 @@ internal static partial class Installation
     {
         dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
         dynamic shortcut = shell.CreateShortcut(path);
-        return string.Equals((string)shortcut.TargetPath, Program.InstalledExe, StringComparison.OrdinalIgnoreCase);
+        return new[]{Program.InstalledExe,Path.Combine(Program.InstallDirectory,"RobloxMultiInstance.exe"),Path.Combine(Program.InstallDirectory,"rmi.exe"),Path.Combine(Program.InstallDirectory,"Installer.exe")}.Contains((string)shortcut.TargetPath,StringComparer.OrdinalIgnoreCase);
     }
     private static void SaveShortcut(string path, string args)
     {
         if (File.Exists(path) && !ShortcutTargetsUs(path)) throw new InvalidOperationException("A shortcut with this name already belongs to another application.");
         dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
         dynamic shortcut = shell.CreateShortcut(path);
-        shortcut.TargetPath = Program.InstalledExe; shortcut.Arguments = args;
+        string target=Program.InstalledExe;
+        if(Distribution.Installed() is not null) {
+            target=Path.Combine(Program.InstallDirectory,args switch { ""=>"RobloxMultiInstance.exe","--diagnostics"=>"rmi.exe",_=>"Installer.exe" });
+            args=args switch { "--diagnostics"=>"diagnostics","--repair"=>"--action repair","--uninstall"=>"--uninstall",_=>args };
+        }
+        shortcut.TargetPath = target; shortcut.Arguments = args;
         shortcut.WorkingDirectory = Program.InstallDirectory;
         shortcut.Description = args switch
         {

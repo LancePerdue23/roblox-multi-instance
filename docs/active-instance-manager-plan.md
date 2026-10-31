@@ -1,3 +1,5 @@
+> Historical feature validation notes. Current desktop testing uses root Test.ps1 and Audit.ps1; shared/helper checks use Test-Shared.ps1 (including -Integration when explicitly required). Retired UI instructions below are historical. See [milestone audit](milestone-audit.md).
+
 # Active-instance manager implementation plan
 
 Status: implemented in the local application. Automated safety checks and synthetic rendering cover the manager; live normal-token Roblox/gameplay acceptance remains a separate manual check. The design and acceptance criteria below describe the implementation and its platform limits.

@@ -1,10 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 — release candidate (publication held)
+
+- First planned GitHub release: Windows x64 desktop app and on-demand helper editions, both including rmi.exe.
+- Add matching graphical installers, portable desktop packaging, edition manifests, SHA-256 verification, and explicit setup/update handoff.
+- Separate shared services from desktop presentation and strengthen launch observation, readiness, operation coordination, and account lookup reliability.
+- Normalize unpublished development version 1.1.0 to release version 1.0.0; retain numeric downgrade and edition-switch protections, including legacy installations.
+- Inspect setup edition, protocol and embedded payload hashes during update verification before handoff; verify every portable member and publish checksums for all packages.
+- Live Windows installation, upgrade, uninstall, gameplay, DPI, theme and accessibility acceptance remain pending. See docs/releases/v1.0.0.md.
+
+## Prior development notes (historical)
 
 - Promote the web desktop source and executable identity; preserve a verified local WinForms archive.
 - Consolidate duplicated compatibility services and migrate valid Preview preferences without overwriting existing primary settings.
-- Distribution installers and terminal-only helper remain in preparation.
+- Earlier distribution preparation was superseded by the two installer editions and rmi commands described above.
 
 - Use a fully client-painted Layouts scrollbar to prevent native white/black tracks and flashes during activation and options expansion; preserve wheel, drag, keyboard, and focus scrolling.
 - Resolve instance account names from ID-only Roblox game-join logs through public profiles; retry unavailable lookups and keep reopened clients separate by process lifetime.
@@ -41,13 +50,13 @@
 - Separate default tests from opt-in Windows/Roblox integration tests.
 - Add portable build scripts and a Windows build workflow template.
 
-## 1.0.1
+## Historical local build 1.0.1 (unpublished)
 
 - Apply and verify browser protocol registration from a clean Windows user context.
 - Notify Windows when launch associations change.
 - Record launch-request status without including authentication data.
 
-## 1.0.0
+## Historical local build 1.0.0 (unpublished)
 
 - Add an on-demand singleton-event worker, launcher, setup, repair, and uninstall.
 - Support browser Play links and a desktop shortcut without a startup watcher.

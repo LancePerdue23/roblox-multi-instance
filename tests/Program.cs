@@ -15,11 +15,6 @@ internal static class Tests
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
-        if (args.FirstOrDefault() == "--user-simulation") return UserSimulation.Run(args.Skip(1).ToArray());
-        if (args.FirstOrDefault() == "--live-user-simulation") return LiveUserSimulation.Run(args.Skip(1).ToArray());
-        if (args.FirstOrDefault() == "--workspace-tests") { WorkspaceTests.Run(Run); return failed == 0 ? 0 : 1; }
-        if (args.FirstOrDefault() == "--workspace-preview") { WorkspaceTests.RenderAll(true); return 0; }
-        if (args.FirstOrDefault() == "--workspace-render") { WorkspaceTests.RenderAll(); return 0; }
         if (args.FirstOrDefault() == "--fixture") return Fixture.Run();
         if (args.FirstOrDefault() == "--inspect-roblox" && args.Length == 2) return Inspect(args[1]);
         bool integration = false;
@@ -30,7 +25,8 @@ internal static class Tests
             else if (args[i] == "--report" && i + 1 < args.Length) requestedReport = args[++i];
             else { Console.Error.WriteLine("Usage: tests [--integration] [--report path]"); return 2; }
         }
-        WorkspaceTests.Run(Run);
+
+        ReliabilityTests.Run(Run);
         Run("Exact event name and type matching", () =>
         {
             Check(Native.IsTargetEvent("Event", @"\Sessions\1\BaseNamedObjects\ROBLOX_singletonEvent"));
@@ -144,6 +140,7 @@ internal static class Tests
         LaunchNotificationTests.Run(Run);
         ActiveInstancesTests.Run(Run);
         BackgroundClientCleanupTests.Run(Run);
+        LaunchStartupTests.Run(Run);
         WindowLayoutsTests.Run(Run);
         UpdateTests.Run(Run);
         RecoveryTests.Run(Run);

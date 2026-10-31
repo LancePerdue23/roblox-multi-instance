@@ -12,11 +12,11 @@ public static class BridgeProtocol
     public const int MaxMessageLength = 64 * 1024;
     private static readonly HashSet<string> Commands = new(StringComparer.Ordinal)
     {
-        "cancel", "app.state", "launch", "launch.start", "instances.list", "instances.focus", "instances.close", "instances.cleanup",
+        "cancel", "app.state", "launch", "launch.start", "instances.list", "instances.stopLabels", "instances.focus", "instances.close", "instances.cleanup",
         "layouts.get", "layouts.preview", "layouts.apply", "layouts.savePreset", "layouts.renamePreset", "layouts.deletePreset",
         "activity.list", "activity.clear", "system.health", "system.testWorker", "system.integration", "system.maintenance", "system.openLogs",
         "settings.get", "settings.save", "settings.notifications", "settings.reset", "settings.resetNotifications", "settings.import", "shortcuts.save",
-        "updates.check", "updates.download", "updates.install", "updates.cancel", "background.status", "background.set",
+        "updates.openPage", "updates.check", "updates.download", "updates.install", "updates.cancel", "background.status", "background.set",
         "host.state", "host.tray", "host.shortcuts", "report.export"
     };
     public static bool IsAllowedCommand(string command) => Commands.Contains(command);

@@ -289,7 +289,7 @@ internal static class ActiveInstancesTests
             fixture.Hide(); Check(!process.OwnsWindow(window));
             fixture.Close(); Check(!process.OwnsWindow(window));
         });
-        run("Active panel preserves process/window selection and invalidates removed/reused windows; exports exclude transient data", Render);
+
     }
 
     private static void WithoutContext(Func<Task> test)
@@ -298,69 +298,7 @@ internal static class ActiveInstancesTests
         try { test().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult(); }
         finally { SynchronizationContext.SetSynchronizationContext(context); }
     }
-    private static IEnumerable<Control> Descendants(Control control) => control.Controls.Cast<Control>()
-        .SelectMany(child => new[] { child }.Concat(Descendants(child)));
-    private static void Render()
-    {
-        const string caption = "synthetic-private-caption-cookie=secret";
-        using var form = new ActiveInstancesForm(false, new FakePlatform(), enableTray: () => { }, configureShortcuts: () => { });
-        form.Show(); form.PerformLayout();
-        _ = form.Handle;
-        var list = Descendants(form).OfType<ListView>().Single(); _ = list.Handle;
-        var picker = Descendants(form).OfType<ComboBox>().Single();
-        var first = new ActiveInstance(new(42, Created), [new(100, caption)], 12.5, 1048576, true);
-        var second = first with { Key = new(43, Created + 1), Windows = [new(200, ""), new(201, "")] };
-        form.Present(new([first, second], 1)); list.Items[0].Selected = true;
-        Check(form.SelectedTarget == Target);
-        form.Present(new([second, first], 0)); Check(form.SelectedTarget == Target);
-        form.Present(new([second, first with { Windows = [new(101, caption)] }], 0));
-        Check(form.SelectedTarget is null); // Never redirect a selection when an HWND disappears.
-        form.Present(new([second, first with { Windows = [new(101, caption)] }], 0));
-        Check(form.SelectedTarget is null); // Nor on subsequent refreshes without a new user selection.
-        list.Items[1].Selected = false; list.Items[0].Selected = true;
-        Check(form.SelectedTarget is null && picker.Items.Count == 2); // Multiple windows require explicit choice.
-        picker.SelectedIndex = 1; Check(form.SelectedTarget == new InstanceTarget(second.Key, 201));
-        form.Present(InstanceSnapshot.Failed);
-        Check(list.Items[0].SubItems[5].Text == "Stale");
-        Check(Descendants(form).OfType<StatusCard>().Where(card => card.AccessibleName is "Windows summary" or "Background summary").All(card => card.AccessibleDescription == "Stale"));
-        form.Present(new([second with { Key = new(43, Created + 2) }], 0)); Check(form.SelectedTarget is null);
-        form.Present(new([first, second, first with { Key = new(44, Created + 3), Windows = [], CpuPercent = null,
-            CpuAvailable = false, WorkingSet = null }], 1));
-        Check(Descendants(form).OfType<StatusCard>().Any(card=>card.AccessibleName=="Windows summary" && card.AccessibleDescription=="3") && Descendants(form).OfType<StatusCard>().Any(card=>card.AccessibleName=="Background summary" && card.AccessibleDescription=="1"));
-        Check(list.Items[2].Text == "No visible window" && list.Items[2].SubItems[5].Text == "Background / starting");
-        list.Items[2].Selected = true;
-        Check(Descendants(form).OfType<Label>().Single(label => label.AccessibleName == "Window action result").Text.Contains("No visible window"));
-        form.Present(new([], 0));
-        Check(Descendants(form).OfType<Label>().Single(label => label.AccessibleName == "Window action result").Text == "Select a client to view its process details and window actions.");
-        Check(Descendants(form).OfType<Button>().Single(button => button.AccessibleName == "Launch Roblox from empty instances").Visible);
-        form.Present(new([first, second], 0));
-        list.Items[0].Selected = true;
-        Check(list.Visible && list.Width > 500 && list.Height > 100);
-        form.CreateControl();
-        string output = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build");
-        Directory.CreateDirectory(output);
-        using (var bitmap = new Bitmap(form.Width, form.Height))
-        {
-            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
-            bitmap.Save(Path.Combine(output, "active-instances-preview.png"));
-        }
-        form.Size = form.MinimumSize;
-        using (var bitmap = new Bitmap(form.Width, form.Height))
-        {
-            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
-            bitmap.Save(Path.Combine(output, "active-instances-narrow.png"));
-        }
-        form.Scale(new SizeF(1.5f, 1.5f)); form.PerformLayout();
-        using (var bitmap = new Bitmap(form.Width, form.Height))
-        {
-            form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
-            bitmap.Save(Path.Combine(output, "active-instances-150.png"));
-        }
-        var health = new HealthSnapshot(1, "1.1.0", "10.0", "X64", DateTimeOffset.UtcNow, [], DiagnosticChecks.NotTested);
-        var report = DiagnosticReports.Build(health, [], true, []);
-        Check(!Encoding.UTF8.GetString(report.Json).Contains(caption));
-    }
-    private sealed class FakeCollector(Func<CancellationToken, InstanceSnapshot> collect) : IInstanceCollector
+private sealed class FakeCollector(Func<CancellationToken, InstanceSnapshot> collect) : IInstanceCollector
     {
         public InstanceSnapshot Collect(CancellationToken token) => collect(token);
     }

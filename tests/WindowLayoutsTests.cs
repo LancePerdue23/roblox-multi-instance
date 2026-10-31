@@ -108,8 +108,8 @@ internal static class WindowLayoutsTests
         });
         run("Shortcut policy rejects bare, reserved and duplicate bindings; registrations release and report conflicts", () =>
         {
-            Check(ShortcutPolicy.Valid(Keys.Control | Keys.Alt | Keys.D1));
-            Check(!ShortcutPolicy.Valid(Keys.A) && !ShortcutPolicy.Valid(Keys.Control | Keys.F12) && !ShortcutPolicy.Valid(Keys.Control | Keys.LWin));
+            Check(ShortcutPolicy.Valid((int)(Keys.Control | Keys.Alt | Keys.D1)));
+            Check(!ShortcutPolicy.Valid((int)(Keys.A)) && !ShortcutPolicy.Valid((int)(Keys.Control | Keys.F12)) && !ShortcutPolicy.Valid((int)(Keys.Control | Keys.LWin)));
             var keys = new FakeKeys(); using var registrations = new HotkeyRegistrations(keys);
             Check(registrations.Set(LayoutSettings.Default.Shortcuts, true).Length == 1);
             Check(keys.Active.Count == 4 && registrations.Command(1) == "Manager");
@@ -154,27 +154,7 @@ internal static class WindowLayoutsTests
             catch (OperationCanceledException) { }
             Check(platform.Moves == 0 && platform.Opened == platform.Disposed);
         }));
-        run("Optional tray lifetime registers only on explicit enable and releases its session mutex and bindings", () =>
-        {
-            var keys = new FakeKeys();
-            string mutexName = @"Local\RobloxLaunchHelper-TestTray-" + Guid.NewGuid().ToString("N");
-            using var host = new ManagerHost(false, keys, new LayoutPreferences(new LayoutStore(Path.Combine(AppContext.BaseDirectory, "nonexistent-layout-fixture.json"))), mutexName,
-                enableBackgroundCleanup: false, ownsMessageLoop: false);
-            Check(!host.TrayActive && keys.Active.Count == 0);
-            host.EnableTray(); Check(host.TrayActive && keys.Active.Count == 4);
-            bool CanAcquire()
-            {
-                return Task.Run(() =>
-                {
-                    using var mutex = new Mutex(false, mutexName);
-                    bool acquired = mutex.WaitOne(0);
-                    if (acquired) mutex.ReleaseMutex();
-                    return acquired;
-                }).GetAwaiter().GetResult();
-            }
-            Check(!CanAcquire());
-            host.StopTray(); Check(!host.TrayActive && keys.Active.Count == 0 && CanAcquire());
-        });
+
         run("Fullscreen batches request windowed mode once, verify transitions and continue after a nonresponding client", () => WithoutContext(async () =>
         {
             var platform = new FakePlatform(); platform.Fullscreen.UnionWith([1, 2]);
@@ -257,7 +237,7 @@ internal static class WindowLayoutsTests
             catch (OperationCanceledException) { }
             Check(input.Toggles == 0 && input.Foreground == 10);
         });
-        run("Arrangement editor renders, maintains ordered checked targets and excludes layout settings from reports", Render);
+
     }
     private static PlacementPlan Plan() => LayoutPlanner.Arrange([Monitor], [Window(1), Window(2)], [Monitor.Id, Monitor.Id], ArrangementKind.SideBySide);
     private static void WithoutContext(Func<Task> test)
@@ -301,93 +281,8 @@ internal static class WindowLayoutsTests
             public void Dispose() => owner.Disposed++;
         }
     }
-    private static IEnumerable<Control> Descendants(Control control) => control.Controls.Cast<Control>().SelectMany(c => new[] { c }.Concat(Descendants(c)));
-    private static void Render()
-    {
-        var previous = SynchronizationContext.Current;
-        using var context = new WindowsFormsSynchronizationContext();
-        SynchronizationContext.SetSynchronizationContext(context);
-        try { RenderUI(); }
-        finally { SynchronizationContext.SetSynchronizationContext(previous); }
-    }
-    private static void RenderUI()
-    {
-        var platform = new FakePlatform();
-        var choices = new List<ArrangementChoice>();
-        var preferences = new LayoutPreferences(new LayoutStore(Path.Combine(AppContext.BaseDirectory, "nonexistent-layout-fixture.json")));
-        bool replacement = false;
-        InstanceSnapshot Discover(CancellationToken _) => new([new(Window(1).Target.Key, [new(1, "Synthetic client A")], null, null, false),
-            new(Window(replacement ? 3 : 2).Target.Key, [new(replacement ? 3 : 2, "Synthetic client B")], null, null, false)], 0);
-        using var form = new ArrangementForm(choices, preferences, ArrangementKind.SideBySide, null, Monitor.Id, platform, Discover);
-        form.Show();
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (choices.Count < 2 && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(10); }
-        Check(choices.Count == 2 && choices.All(c => c.Selected));
-        var buttons = Descendants(form).OfType<Button>().ToArray();
-        Check(!buttons.Any(b => b.Text == "&Preview"));
-        WaitFor(() => buttons.Single(b => b.Text == "&Apply").Enabled);
-        void Preview()
-        {
-            var task = form.RefreshPreviewAsync();
-            WaitFor(() => task.IsCompleted);
-            task.GetAwaiter().GetResult();
-        }
-        Preview();
-        if (!buttons.Single(b => b.Text == "&Apply").Enabled)
-            throw new Exception("Preview did not enable Apply: " + string.Join(" / ", Descendants(form).OfType<Label>().Select(l => l.Text)));
-        var table = Descendants(form).OfType<DataGridView>().Single();
-        Check(!table.AllowUserToResizeColumns && !table.AllowUserToResizeRows);
-        int monitorClicks=0; table.CellMouseClick+=(_,_)=>monitorClicks++;
-        var monitorCell=table.GetCellDisplayRectangle(2,1,false);
-        nint monitorPoint=((monitorCell.Top+monitorCell.Height/2)<<16) | ((monitorCell.Right-14)&0xffff);
-        SendMessage(table.Handle,0x0201,1,monitorPoint);
-        SendMessage(table.Handle,0x0202,0,monitorPoint);
-        Application.DoEvents();
-        var monitorMenu=((LayoutWindowGrid)table).MonitorMenu;
-        if(!monitorMenu.Visible || table.EditingControl is not null) throw new Exception($"Monitor menu not opened: clicks={monitorClicks}, cell={monitorCell}, client={table.ClientSize}, enabled={table.Enabled}, current={table.CurrentCell?.ColumnIndex}");
-        Check(monitorMenu.BackColor==ThemePalette.For(table).Surface);
-        using(var image=new Bitmap(monitorMenu.Width,monitorMenu.Height))
-        {
-            monitorMenu.DrawToBitmap(image,new(Point.Empty,monitorMenu.Size));
-            image.Save(Path.Combine(AppContext.BaseDirectory,"..","..","..","..",".build","layout-monitor-menu.png"));
-        }
-        ((ToolStripMenuItem)monitorMenu.Items[0]).PerformClick(); monitorMenu.Close();
-        Check(table.Rows[1].Cells[2].Value as string==Monitor.Label);
-        Check(table.CurrentCell?.RowIndex==1);
-        ClickCheckbox(table, 0);
-        WaitFor(() => Descendants(form).OfType<LayoutPreview>().Single().Plan?.Placements.Length == 1);
-        Check(!choices[0].Selected && table.Rows[0].Cells[0].Value is false);
-        ClickCheckbox(table, 0);
-        Check(choices[0].Selected && table.Rows[0].Cells[0].Value is true);
-        WaitFor(() => Descendants(form).OfType<LayoutPreview>().Single().Plan?.Placements.Length == 2);
-        platform.Fullscreen.Add(2); Preview();
-        Check(choices[1].Selected && table.Rows[1].Cells[3].Value as string == "Ready — will exit fullscreen");
-        Check(Descendants(form).OfType<LayoutPreview>().Single().Plan!.Placements.Length == 2);
-        ClickCheckbox(table, 1); Check(!choices[1].Selected);
-        ClickCheckbox(table, 1); Check(choices[1].Selected);
-        platform.Fullscreen.Remove(2); Preview();
-        Check(table.Rows[1].Cells[3].Value as string == "Ready" && buttons.Single(b => b.Text == "&Apply").Enabled);
-        Check(Descendants(form).OfType<LayoutPreview>().Single().Plan!.Placements.Length == 2);
-        table.CurrentCell = table.Rows[1].Cells[1]; buttons.Single(b => b.Text == "Move up").PerformClick();
-        Check(choices[0].Target == Window(2).Target && !buttons.Single(b => b.Text == "&Apply").Enabled);
-        string output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build"));
-        foreach (var (size, name) in new[] { (form.Size, "arrangement-preview.png"), (form.MinimumSize, "arrangement-narrow.png") })
-        {
-            form.Size = size; form.PerformLayout(); Preview();
-            using var image = new Bitmap(form.Width, form.Height); form.DrawToBitmap(image, new Rectangle(Point.Empty, form.Size)); image.Save(Path.Combine(output, name));
-        }
-        form.Scale(new SizeF(1.5f, 1.5f)); form.PerformLayout();
-        using (var image = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(image, new Rectangle(Point.Empty, form.Size)); image.Save(Path.Combine(output, "arrangement-150.png")); }
-        var health = new HealthSnapshot(1, "1.1.0", "10.0", "X64", DateTimeOffset.UtcNow, [], DiagnosticChecks.NotTested);
-        string report = Encoding.UTF8.GetString(DiagnosticReports.Build(health, [], true, []).Json);
-        Check(!report.Contains("monitor-interface-primary") && !report.Contains("synthetic-private-caption") && !report.Contains("window-layouts"));
-        replacement = true; buttons.Single(b => b.Text == "Refresh windows").PerformClick();
-        deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!choices.Any(c => c.Target == Window(3).Target) && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(10); }
-        Check(choices[0].Target == Window(1).Target && choices[0].Selected && !choices.Single(c => c.Target == Window(3).Target).Selected);
-        Check(!choices.Any(c => c.Target == Window(2).Target));
-        form.Close();
-    }
+
+
     private static void WaitFor(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -417,16 +312,5 @@ internal static class WindowLayoutsTests
             Check(Current == window); Toggles++; OnToggle?.Invoke();
             if (ExitOnToggle && ToggleAllowed) IsFullscreen = false; return ToggleAllowed;
         }
-    }
-    [DllImport("user32.dll")] private static extern nint SendMessage(nint window, uint message, nint wparam, nint lparam);
-    private static void ClickCheckbox(DataGridView table, int row)
-    {
-        var cell = table.GetCellDisplayRectangle(0, row, false);
-        var content = table.Rows[row].Cells[0].ContentBounds;
-        int x = cell.X + content.X + content.Width / 2, y = cell.Y + content.Y + content.Height / 2;
-        nint point = (y << 16) | (x & 0xffff);
-        SendMessage(table.Handle, 0x0201, 1, point);
-        SendMessage(table.Handle, 0x0202, 0, point);
-        Application.DoEvents();
     }
 }

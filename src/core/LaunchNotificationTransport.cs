@@ -14,7 +14,7 @@ internal static class NotificationWire
     internal static string Name => Program.Product + "-Notifications-" + Program.Sid + "-" + Process.GetCurrentProcess().SessionId;
     internal static bool IsPeer(Identity peer) => peer.Sid == Program.Sid && !peer.Elevated &&
         peer.Session == Process.GetCurrentProcess().SessionId &&
-        string.Equals(peer.Image, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase);
+        (string.Equals(peer.Image, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) || File.Exists(Distribution.MetadataPath) && new[]{Program.InstalledExe,Path.Combine(Program.InstallDirectory,"RobloxMultiInstance.exe"),Path.Combine(Program.InstallDirectory,"rmi.exe")}.Contains(peer.Image,StringComparer.OrdinalIgnoreCase));
     internal static async Task WriteAsync(Stream stream, LaunchStatus status, CancellationToken token)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(status);
@@ -63,10 +63,11 @@ internal sealed class LaunchNotificationPublisher : IDisposable
         this.pipeName = pipeName ?? NotificationWire.Name;
         this.requestHost = requestHost ?? (() =>
         {
-            var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
+            var desktop=Path.Combine(Program.InstallDirectory,"RobloxMultiInstance.exe");
+            var start = new ProcessStartInfo(File.Exists(desktop)?desktop:Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
             start.ArgumentList.Add("--launch-notifications"); Process.Start(start)?.Dispose();
         });
-        this.send = send ?? SendAsync; pump = Task.Run(PumpAsync);
+        this.send = send ?? (Distribution.Installed()?.Edition=="Helper" ? (_,_)=>Task.FromResult(true) : SendAsync); pump = Task.Run(PumpAsync);
     }
     internal void Publish(LaunchStatus status) => queue.Writer.TryWrite(status);
     internal async Task<bool> FinishAsync(LaunchStatus status)

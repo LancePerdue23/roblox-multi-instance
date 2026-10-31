@@ -14,12 +14,13 @@ using Forms = System.Windows.Forms;
 
 namespace RobloxMultiInstance.Desktop;
 
-internal sealed class MainWindow : Window
+internal sealed partial class MainWindow : Window
 {
     private readonly WebView2 view = new();
     private readonly WindowTheme windowTheme;
     private readonly System.Drawing.Icon trayIcon = LoadTrayIcon();
-    private readonly DesktopBackend backend;
+    private readonly IDesktopBackend backend;
+    private readonly string? isolatedProfile;
     private readonly CancellationTokenSource closed = new();
     private readonly Dictionary<string, CancellationTokenSource> running = new(StringComparer.Ordinal);
     private readonly HashSet<string> seen = new(StringComparer.Ordinal);
@@ -33,12 +34,19 @@ internal sealed class MainWindow : Window
     private int layoutOperations;
     private TaskCompletionSource idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool handlingShortcut;
-    private readonly HashSet<string> activeActions = new(StringComparer.Ordinal);
+    private bool openUpdates;
+    private bool hostReady;
+    public void RequestUpdates(){openUpdates=true;if(hostReady){openUpdates=false;Send(new {version=1,@event="navigate",data=new {page="System",updates=true}});}}
+    private RobloxLaunchHelper.UpdateShutdownRequest? updateShutdown;
+    private readonly RobloxLaunchHelper.OperationCoordinator operations = new();
 
-    public MainWindow(bool smoke = false)
+    public MainWindow(bool smoke = false) : this(null, null, smoke) { }
+
+    internal MainWindow(IDesktopBackend? injectedBackend, string? profile, bool smoke = false)
     {
         this.smoke = smoke;
-        backend = new DesktopBackend(smoke ? Path.Combine(AppContext.BaseDirectory, "smoke-preferences") : null);
+        isolatedProfile = profile;
+        backend = injectedBackend ?? new DesktopBackend(smoke ? Path.Combine(AppContext.BaseDirectory, "smoke-preferences") : null);
         windowTheme = new WindowTheme(this, backend.AppearanceScheme);
         windowTheme.Changed += () => { if (tray?.ContextMenuStrip is Forms.ContextMenuStrip menu) windowTheme.StyleMenu(menu); };
         Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/app.ico"));
@@ -50,7 +58,7 @@ internal sealed class MainWindow : Window
         Content = view;
         Loaded += async (_, _) => await InitializeAsync();
         Closing += OnClosing;
-        Closed += (_, _) => { closed.Cancel(); windowTheme.Dispose(); shortcuts?.Dispose(); tray?.Dispose(); trayIcon.Dispose(); view.Dispose(); backend.Dispose(); };
+        Closed += (_, _) => { closed.Cancel(); windowTheme.Dispose(); updateShutdown?.Dispose(); shortcuts?.Dispose(); tray?.Dispose(); trayIcon.Dispose(); view.Dispose(); backend.Dispose(); };
         backend.Event += (operationId, name, data) =>
         {
             if (!Dispatcher.HasShutdownStarted)
@@ -69,6 +77,7 @@ internal sealed class MainWindow : Window
             if (!File.Exists(Path.Combine(assets, "index.html"))) throw new FileNotFoundException("Bundled interface missing.");
             string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxMultiInstance", "WebView2");
             if (smoke) profile = Path.Combine(AppContext.BaseDirectory, "smoke-profile");
+            if (isolatedProfile is not null) profile = isolatedProfile;
             var environment = await CoreWebView2Environment.CreateAsync(null, profile);
             await view.EnsureCoreWebView2Async(environment);
             var core = view.CoreWebView2;
@@ -100,6 +109,7 @@ internal sealed class MainWindow : Window
                 catch { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "host-smoke.txt"), "Host smoke failed."); }
                 finally { exiting = true; Close(); }
             };
+            updateShutdown=new RobloxLaunchHelper.UpdateShutdownRequest(()=>Dispatcher.InvokeAsync(()=>{exiting=true;Close();}).Task);
             shortcuts = new ShortcutOwner(this);
             shortcuts.Pressed += async command =>
             {
@@ -123,7 +133,9 @@ internal sealed class MainWindow : Window
             panel.Children.Add(new TextBlock { Margin = new Thickness(0, 20, 0, 20), Text = "Install the Evergreen runtime from Microsoft, then reopen Roblox Multi Instance.", TextWrapping = TextWrapping.Wrap });
             var button = new Button { Content = "Open Microsoft’s runtime download page", Padding = new Thickness(15), HorizontalAlignment = HorizontalAlignment.Left };
             button.Click += (_, _) => Process.Start(new ProcessStartInfo("https://developer.microsoft.com/microsoft-edge/webview2/") { UseShellExecute = true });
-            panel.Children.Add(button); Content = panel;
+            panel.Children.Add(button);
+            var retry=new Button {Content="Retry after installing WebView2",Padding=new Thickness(15),Margin=new Thickness(0,12,0,0),HorizontalAlignment=HorizontalAlignment.Left};
+            retry.Click+=async (_,_)=>{retry.IsEnabled=false;Content=view;await InitializeAsync();};panel.Children.Add(retry);Content = panel;
         }
         catch
         {
@@ -148,16 +160,9 @@ internal sealed class MainWindow : Window
             Send(new { version = 1, id = request.Id, data = new { canceled = true } }); return;
         }
         if (running.Count >= 16) { SendError(request.Id, "busy", "Too many operations are running. Wait and retry."); return; }
-        string? action = request.Command switch
-        {
-            "launch" or "launch.start" => "launch",
-            "layouts.apply" or "layouts.preview" => "layout",
-            "system.maintenance" or "system.integration" or "updates.install" => "maintenance",
-            "updates.download" => "download",
-            "instances.close" or "instances.cleanup" => "close",
-            _ => null
-        };
-        if (action is not null && !activeActions.Add(action)) { SendError(request.Id, "busy", "This action is already running. Wait for it to finish."); return; }
+        IDisposable lease;
+        try { lease=operations.Enter(request.Command); }
+        catch(InvalidOperationException) { SendError(request.Id,"busy","A conflicting operation is still running. Wait for it to finish.");return; }
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(closed.Token);
         if (running.Count == 0) idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         running.Add(request.Id, cancellation);
@@ -194,7 +199,7 @@ internal sealed class MainWindow : Window
             }
             else
             {
-                data = await backend.ExecuteAsync(request.Command, request.Payload, cancellation.Token);
+                data = await backend.ExecuteOperationAsync(request.Id, request.Command, request.Payload, cancellation.Token);
                 if (request.Command is "settings.save" or "settings.reset" or "settings.import") await RefreshWindowThemeAsync();
                 if (shortcuts?.Enabled == true && request.Command is "settings.save" or "shortcuts.save" or "settings.reset")
                 {
@@ -204,6 +209,8 @@ internal sealed class MainWindow : Window
                 }
             }
             Send(new { version = 1, id = request.Id, data });
+            if(request.Command=="host.state"){hostReady=true;if(openUpdates)RequestUpdates();}
+            if(data is RobloxMultiInstance.OperationResultDto result && result.Code is "SETUP_HANDOFF" or "UNINSTALL_REQUESTED")_ = Dispatcher.BeginInvoke(()=>{exiting=true;Close();});
         }
         catch (OperationCanceledException) { SendError(request.Id, "canceled", "Operation canceled."); }
         catch (DesktopOperationException ex) { SendError(request.Id, ex.Code, ex.Message); }
@@ -217,7 +224,7 @@ internal sealed class MainWindow : Window
         {
             if (layout) { layoutOperations--; Send(new { version = 1, operationId = request.Id, @event = "host.busy", data = new { busy = layoutOperations > 0 } }); }
             running.Remove(request.Id);
-            if (action is not null) activeActions.Remove(action);
+            lease.Dispose();
             if (running.Count == 0) idle.TrySetResult();
         }
     }

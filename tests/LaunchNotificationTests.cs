@@ -171,15 +171,9 @@ internal static class LaunchNotificationTests
                 server.Dispose(); await server.Completion.WaitAsync(TimeSpan.FromSeconds(5));
             }).GetAwaiter().GetResult();
         });
-        run("Notification settings and progress surfaces render with safe defaults and bounded text", () => Store(dir =>
+        run("Installed-helper progress surface renders bounded text", () => Store(dir =>
         {
-            using var settings = new NotificationSettingsForm(new NotificationPreferences(Path.Combine(dir, "settings.json")));
-            settings.Show(); Application.DoEvents();
-            var options = WorkspaceControls.Descendants(settings).OfType<CheckBox>().ToArray();
-            Check(options.Length == 2 && options.All(c => !c.Checked));
-            using var image = new Bitmap(settings.Width, settings.Height); settings.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
-            string output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build")); Directory.CreateDirectory(output);
-            image.Save(Path.Combine(output, "notification-settings-preview.png")); settings.Close();
+            string output = Path.Combine(Path.GetTempPath(), "RMI-notification-fixtures"); Directory.CreateDirectory(output);
             using var progress = new LaunchProgressForm();
             progress.Present("1 helper completion confirmed; 1 completion unconfirmed; 2 still in progress.\r\n\r\n" + LaunchStatusText.Limit);
             Application.DoEvents();

@@ -10,12 +10,17 @@ using CheckState = RobloxLaunchHelper.CheckState;
 namespace RobloxMultiInstance;
 
 /// <summary>UI-independent preview facade. Legacy identity is deliberately retained only for shared helper operations.</summary>
-public sealed class DesktopBackend : IDisposable
+public sealed class DesktopBackend : IDesktopBackend
 {
     public static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxMultiInstance");
     readonly string migrationWarning = "";
     readonly InstancePlatform platform = new();
     readonly InstanceCollector collector;
+    readonly AccountEnrichment labels=new();
+    long generation;
+    int disposed;
+    string probeFingerprint="";
+    readonly object identityLock=new();
     readonly PlacementPlatform placement = new();
     readonly LayoutStore store;
     readonly AppearancePreferences appearance;
@@ -25,7 +30,10 @@ public sealed class DesktopBackend : IDisposable
     readonly NotificationPreferences notifications = new();
     readonly Dictionary<string, InstanceTarget> targets = [];
     readonly Dictionary<InstanceTarget,string> ids = [];
-    readonly SemaphoreSlim gate = new(1,1);
+    readonly OperationCoordinator operations = new();
+    readonly SemaphoreSlim discovery = new(1,1);
+    readonly SemaphoreSlim preferenceGate=new(1,1);
+    readonly AsyncLocal<string?> requestId = new();
     readonly HttpClient http = UpdateHost.CreateClient();
     readonly UpdateDownloader downloader;
     LayoutSettings settings;
@@ -36,7 +44,6 @@ public sealed class DesktopBackend : IDisposable
     DownloadedUpdate? downloaded;
     CancellationTokenSource? downloadCancellation;
     bool imported, settingsAvailable = true, planApplied;
-    int launching;
     BackgroundClientMonitor? background;
     public event Action<string,string,object?>? Event;
     public DesktopBackend(string? storageRoot = null)
@@ -48,22 +55,34 @@ public sealed class DesktopBackend : IDisposable
         collector = new(platform,LegacyProgram.Sid,process.SessionId);
         try { settings = store.Load(); } catch { settings = LayoutSettings.Default; settingsAvailable = false; } imported = File.Exists(Path.Combine(this.storageRoot,"imported"));
         downloader = new(http,Path.Combine(this.storageRoot,"updates","staging"));
+        labels.Resolved+=(version,key,name)=> { lock(identityLock) { if(Volatile.Read(ref disposed)!=0||version!=generation)return;var rows=ids.Where(x=>x.Key.Key==key).Select(x=>new { id=x.Value,username=name }).ToArray();Event?.Invoke("labels","instances.labels",new { generation=version,labels=rows }); } };
     }
     static string Text(JsonElement p,string key,string fallback="") => p.TryGetProperty(key,out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : fallback;
     static bool Bool(JsonElement p,string key) => p.TryGetProperty(key,out var v) && v.ValueKind == JsonValueKind.True;
     static void Confirm(JsonElement p) { if(!Bool(p,"confirmed")) throw new DesktopOperationException("STATE_CHANGED","Confirm this action before continuing."); }
     static string VersionLabel() => File.Exists(LegacyProgram.InstalledExe) ? FileVersionInfo.GetVersionInfo(LegacyProgram.InstalledExe).FileVersion ?? "unknown" : "not installed";
-    void RequireHelper() { if(!File.Exists(LegacyProgram.InstalledExe)) throw new DesktopOperationException("STATE_CHANGED","Install the current helper using the original app, then reopen this preview."); }
+    void RequireHelper() { if(!File.Exists(LegacyProgram.InstalledExe)||File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))) throw new DesktopOperationException("STATE_CHANGED","Set up the matching helper using System → Set up helper.");var metadata=Distribution.Installed();if(metadata is not null&&UpdateVersion.Parse(metadata.Version)!=UpdateVersion.Parse(typeof(DesktopBackend).Assembly.GetName().Version?.ToString()))throw new DesktopOperationException("STATE_CHANGED","The app and helper versions differ. Run the matching desktop setup."); }
     public async Task<object?> ExecuteAsync(string command, JsonElement payload, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if(command is "launch" or "launch.start") { if(Interlocked.Exchange(ref launching,1)!=0)throw new DesktopOperationException("BUSY","A launch is already running."); try { RequireHelper(); return new { exitCode=await RunHelperAsync("--launch-roblox",token) }; } finally { Volatile.Write(ref launching,0); } }
         if(command is "updates.cancel") { downloadCancellation?.Cancel(); return new { canceled=true }; }
-        if(command is "app.state" or "settings.get" or "settings.read" or "activity.list" or "activity.read" or "background.status") return await ExecuteCoreAsync(command,payload,token);
-        await gate.WaitAsync(token);
-        try { return await ExecuteCoreAsync(command,payload,token); }
-        finally { gate.Release(); }
+        using var operation = operations.Enter(command);
+        if(command is "instances.list" or "instances.refresh" or "instances.stopLabels") {
+            await discovery.WaitAsync(token);
+            try { return await ExecuteCoreAsync(command,payload,token); } finally { discovery.Release(); }
+        }
+        if(OperationCoordinator.Category(command)=="preferences" || command is "settings.get" or "settings.read" or "layouts.get" or "layouts.preview" or "layouts.savePreset") {
+            await preferenceGate.WaitAsync(token);try{return await ExecuteCoreAsync(command,payload,token);}finally{preferenceGate.Release();}
+        }
+        return await ExecuteCoreAsync(command,payload,token);
     }
+    public async Task<object?> ExecuteOperationAsync(string id,string command,JsonElement payload,CancellationToken token)
+    {
+        requestId.Value=id;
+        try { return await ExecuteAsync(command,payload,token); }
+        finally { requestId.Value=null; }
+    }
+    static OperationResultDto Result(OperationResult result)=>new(result.Outcome.ToString(),result.Code,result.Message,result.Items?.Select(x=>new OperationItemDto(x.Id,x.Outcome.ToString(),x.Code,x.Message)).ToArray()??[]);
     async Task<object?> ExecuteCoreAsync(string command, JsonElement p, CancellationToken token)
     {
         switch(command)
@@ -73,16 +92,17 @@ public sealed class DesktopBackend : IDisposable
                 if(Bool(p,"enabled") && background is null) { using var current=Process.GetCurrentProcess();background=new(new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false),new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId),@"Local\RobloxLaunchHelper-BackgroundCleanup-"+LegacyProgram.Sid+"-"+current.SessionId); }
                 else if(!Bool(p,"enabled") && background is not null) { await background.StopAsync();background.Dispose();background=null; }
                 return new { enabled=background is not null,owns=background?.OwnsMutex??false,waiting=background is not null && !background.OwnsMutex };
-            case "app.state": return new AppStateDto(typeof(DesktopBackend).Assembly.GetName().Version?.ToString(3) ?? "unknown",VersionLabel(),File.Exists(LegacyProgram.InstalledExe),"Browser integration and launch history are managed by the installed helper. " + migrationWarning);
+            case "app.state": return new AppStateDto(typeof(DesktopBackend).Assembly.GetName().Version?.ToString(3) ?? "unknown",VersionLabel(),File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending")),"Browser integration and launch history are managed by the installed helper. " + migrationWarning,await ReadinessAsync(token));
             case "instances.cleanup":
-                Confirm(p); using(var current=Process.GetCurrentProcess()) { var fresh=await Task.Run(()=>new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false).Collect(token),token); var cleanup=new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId);return new { results=await Task.Run(()=>BackgroundClientCleanup.Candidates(fresh,DateTime.UtcNow).Select(key=>new { result=cleanup.Execute(key,token).ToString() }).ToArray(),token) }; }
+                Confirm(p); using(var current=Process.GetCurrentProcess()) { var fresh=await Task.Run(()=>new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false).Collect(token),token); var cleanup=new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId);if(!fresh.Available || fresh.Unavailable>0)return Result(new(OperationOutcome.Unknown,"INSPECTION_UNAVAILABLE","Cleanup could not safely inspect all clients. Nothing was stopped."));return Result(OperationResult.ForCleanup(await Task.Run(()=>BackgroundClientCleanup.Candidates(fresh,DateTime.UtcNow).Select(key=>cleanup.Execute(key,token)).ToArray(),token))); }
+            case "instances.stopLabels": await labels.StopAsync();return new { stopped=true };
             case "instances.list": case "instances.refresh": return await ListAsync(token);
             case "instances.focus": case "instances.close":
                 if(command.EndsWith("close")) Confirm(p);
                 if(!targets.TryGetValue(Text(p,"id"),out var target)) throw new DesktopOperationException("STATE_CHANGED","This selection expired. Refresh Instances and select the window again.");
                 using(var process = Process.GetCurrentProcess())
-                    return new { result = await Task.Run(()=>new InstanceActions(platform,LegacyProgram.Sid,process.SessionId).Execute(target,command.EndsWith("focus")?InstanceAction.Focus:InstanceAction.Close,token),token) is var action ? action.ToString() : "Unavailable" };
-            case "launch": case "launch.start": RequireHelper(); return new { exitCode = await RunHelperAsync("--launch-roblox",token) };
+                    return Result(OperationResult.ForAction(await Task.Run(()=>new InstanceActions(platform,LegacyProgram.Sid,process.SessionId).Execute(target,command.EndsWith("focus")?InstanceAction.Focus:InstanceAction.Close,token),token)));
+            case "launch": case "launch.start": RequireHelper(); token.ThrowIfCancellationRequested();return Result(await Launch.RunResultAsync(null,token));
             case "layouts.get": case "layouts.state": return LayoutState();
             case "layouts.preview": return await PreviewAsync(p,token);
             case "layouts.apply":
@@ -109,12 +129,23 @@ public sealed class DesktopBackend : IDisposable
                     await Protocol.WriteAsync(pipe,"PROBE",timeout.Token);
                     bool ready=await Protocol.ReadAsync(pipe,timeout.Token)=="OK"; worker=DiagnosticChecks.Result("worker",ready?CheckState.Healthy:CheckState.Failed,ready?DiagnosticCode.WorkerReady:DiagnosticCode.WorkerUnavailable);
                 }
-                return await HealthAsync(token);
+                probeFingerprint=HelperReadiness.Fingerprint();return await HealthAsync(token);
             case "system.integration": case "integration.set": Confirm(p);RequireHelper();await BrowserIntegration.SetAsync(Bool(p,"enabled"),token);return await HealthAsync(token);
             case "system.maintenance": case "maintenance.run":
                 Confirm(p);var actionName=Text(p,"action");
                 if(actionName is not ("setup" or "repair" or "recover" or "uninstall")) throw new DesktopOperationException("INVALID_REQUEST","Unknown maintenance action.");
-                RequireHelper();return new { exitCode=await RunHelperAsync("--"+actionName,token) };
+                if(actionName=="setup" || actionName is "repair" or "recover" or "uninstall" && File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"Installer.exe"))) {
+                    string setup=File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"Installer.exe"))?Path.Combine(LegacyProgram.InstallDirectory,"Installer.exe"):Path.Combine(AppContext.BaseDirectory,Distribution.SetupName("Desktop"));
+                    if(!File.Exists(setup))throw new DesktopOperationException("STATE_CHANGED","The matching setup payload is missing. Download the desktop setup from the release page.");
+                    Event?.Invoke(requestId.Value??"maintenance","operation.commit",null);
+                    if(actionName!="uninstall"&&string.Equals(Environment.ProcessPath,Path.Combine(LegacyProgram.InstallDirectory,"RobloxMultiInstance.exe"),StringComparison.OrdinalIgnoreCase)){
+                        await UpdateSetupHandoff.StartMaintenanceAsync(setup,actionName);return Result(new(OperationOutcome.Warning,"SETUP_HANDOFF","Setup accepted the maintenance request. This app will close; setup will report its result."));
+                    }
+                    var setupResult=OperationResult.FromExit(await RunExecutableAsync(setup,actionName=="uninstall"?"--uninstall":actionName=="setup"?"":"--action "+actionName,token));worker=DiagnosticChecks.NotTested;
+                    if(actionName=="uninstall"&&setupResult.Outcome==OperationOutcome.Succeeded)setupResult=setupResult with {Code="UNINSTALL_REQUESTED",Message="Uninstall completed. Close the app to finish removing installed files."};
+                    return Result(setupResult);
+                }
+                RequireHelper();Event?.Invoke(requestId.Value??"maintenance","operation.commit",null);var maintenanceResult=OperationResult.FromExit(await RunHelperAsync("--"+actionName,token));worker=DiagnosticChecks.NotTested;if(actionName=="uninstall"&&maintenanceResult.Outcome==OperationOutcome.Succeeded)maintenanceResult=maintenanceResult with {Code="UNINSTALL_REQUESTED",Message="Helper integration was removed. This app will close so installed files can be removed. Settings and history are retained."};return Result(maintenanceResult);
             case "system.openLogs": case "logs.open":
                 int index=Text(p,"kind") switch { "worker"=>1,"setup"=>2,_=>0 };
                 var directory=DiagnosticReports.LogDirectories[index];
@@ -140,33 +171,45 @@ public sealed class DesktopBackend : IDisposable
                 Save(importedLayouts);appearance.Save(importedAppearance.Scheme,true);Directory.CreateDirectory(storageRoot);File.WriteAllText(Path.Combine(storageRoot,"imported"),"1");imported=true;return Settings();
             case "updates.check":
                 using(var limit=CancellationTokenSource.CreateLinkedTokenSource(token)) { limit.CancelAfter(TimeSpan.FromSeconds(30));release=await new GitHubReleaseSource(http).LatestAsync(limit.Token); }
+                if(release is not null&&Distribution.Installed() is null)release=release with {Asset=null,DownloadProblem="This legacy installation needs an explicit setup upgrade. Open the release page and choose the desktop or helper edition."};
                 return UpdateState();
+            case "updates.openPage":
+                var page=release?.Page??UpdateUrls.Releases;
+                if(page!=UpdateUrls.Releases&&!UpdateUrls.RepositoryUrl(page,"/releases/tag/"))throw new DesktopOperationException("INVALID_REQUEST","Unsupported release page.");
+                Process.Start(new ProcessStartInfo(page.ToString()){UseShellExecute=true})?.Dispose();return new {opened=true};
             case "updates.download":
                 if(release?.Asset is null)throw new DesktopOperationException("STATE_CHANGED","Check for an available verified update first.");
                 downloaded?.Dispose();downloaded=null;
-                using(downloadCancellation=CancellationTokenSource.CreateLinkedTokenSource(token))
-                    downloaded=await downloader.DownloadAsync(release,new Progress<long>(bytes=>Event?.Invoke("update-download","progress",new { bytes,total=release.Asset.Size })),downloadCancellation.Token);
-                downloadCancellation=null;return UpdateState();
+                string downloadId=requestId.Value??"update-download";
+                using(var downloadToken=CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    downloadCancellation=downloadToken;
+                    try{downloaded=await downloader.DownloadAsync(release,new Progress<long>(bytes=>Event?.Invoke(downloadId,"progress",new { bytes,total=release.Asset.Size })),downloadToken.Token);}
+                    finally{downloadCancellation=null;}
+                }
+                return UpdateState();
             case "updates.install": case "updates.setup":
                 Confirm(p);if(downloaded is null||release is null)throw new DesktopOperationException("STATE_CHANGED","Download and verify the helper update first.");
                 await downloader.VerifyAsync(downloaded.Executable,release,token);
-                UpdateShutdownRequest.CloseManagers();
-                for(int i=0;i<20&&!UpdateInstallReadiness.IsReady(LegacyProgram.InstalledExe);i++)await Task.Delay(500,token);
-                if(!UpdateInstallReadiness.IsReady(LegacyProgram.InstalledExe))throw new DesktopOperationException("OPERATION_FAILED","The installed helper is busy. Close its windows and retry setup.");
-                int exit=await RunExecutableAsync(downloaded.Executable,"--setup",token);
-                var installed=UpdateVersion.Parse(VersionLabel());if(UpdateSetup.ResultMessage(exit,installed,release.Version) is string error)throw new DesktopOperationException("OPERATION_FAILED",error);
-                return UpdateState();
+                if(Distribution.Installed() is null)return Result(new(OperationOutcome.Warning,"LEGACY_UPGRADE_REQUIRED","This installation needs an explicit upgrade. Download the desktop setup from the release page."));
+                await new UpdateSetupHandoff().StartAsync(downloaded.Executable,release);
+                return Result(new(OperationOutcome.Warning,"SETUP_HANDOFF","Setup accepted the update. This app will close; setup will report the installation result."));
             default: throw new DesktopOperationException("INVALID_REQUEST","Unknown command.");
         }
     }
-    string GetId(InstanceTarget target) { if(!ids.TryGetValue(target,out var id)) { id=Guid.NewGuid().ToString("N");ids[target]=id;targets[id]=target; } return id; }
+    string GetId(InstanceTarget target) { lock(identityLock) { if(!ids.TryGetValue(target,out var id)) { id=Guid.NewGuid().ToString("N");ids[target]=id;targets[id]=target; } return id; } }
     async Task<object> ListAsync(CancellationToken token)
     {
         var result=await Task.Run(()=>collector.Collect(token),token);
+        lock(identityLock) {
+        var version=++generation;
         var live=new HashSet<InstanceTarget>();
-        var rows=result.Instances.SelectMany(client=>client.Windows.Length==0 ? new[]{ new InstanceDto("","Background client",client.Key.Id,client.Username,client.CpuPercent,client.WorkingSet,InstancePolicy.Started(client.Key),false) } : client.Windows.Select(window=> { var target=new InstanceTarget(client.Key,window.Handle);live.Add(target);return new InstanceDto(GetId(target),window.Title,client.Key.Id,client.Username,client.CpuPercent,client.WorkingSet,InstancePolicy.Started(client.Key),true); })).ToArray();
+        foreach(var client in result.Instances.Where(x=>x.Windows.Length==0))live.Add(new(client.Key,0));
+        var rows=result.Instances.SelectMany(client=>client.Windows.Length==0 ? new[]{ new InstanceDto(GetId(new(client.Key,0)),"Background client",client.Key.Id,labels.Cached(client.Key),client.CpuPercent,client.WorkingSet,InstancePolicy.Started(client.Key),false) } : client.Windows.Select(window=> { var target=new InstanceTarget(client.Key,window.Handle);live.Add(target);return new InstanceDto(GetId(target),window.Title,client.Key.Id,labels.Cached(client.Key),client.CpuPercent,client.WorkingSet,InstancePolicy.Started(client.Key),true); })).ToArray();
         foreach(var target in ids.Keys.Where(x=>!live.Contains(x)).ToArray()){targets.Remove(ids[target]);ids.Remove(target);}
-        return new InstanceListDto(result.Available,result.Unavailable,rows);
+        labels.Schedule(result.Instances.Select(x=>x.Key),version);
+        return new InstanceListDto(result.Available,result.Unavailable,rows,version);
+        }
     }
     static MonitorDto MapMonitor(LayoutMonitor m)=>new(m.Id,m.Label,new(m.Work.X,m.Work.Y,m.Work.Width,m.Work.Height),m.Dpi,m.Primary);
     object LayoutState()=>new LayoutStateDto(placement.Monitors().Select(MapMonitor).ToArray(),settings.Presets.Select(p=>new PresetDto(p.Name,p.Slots.Select(s=>new SlotDto(s.Monitor,s.X,s.Y,s.Width,s.Height)).ToArray())).ToArray(),settings.Shortcuts);
@@ -206,11 +249,13 @@ public sealed class DesktopBackend : IDisposable
     void Save(LayoutSettings next) { if(!settingsAvailable)throw new DesktopOperationException("STATE_CHANGED","Preview layout settings are unavailable. Reset them explicitly in Settings before saving."); store.Save(next);settings=next;Event?.Invoke("settings","changed",Settings()); }
     object Settings() { notifications.Reload();return new SettingsDto(appearance.Scheme.ToString(),settingsAvailable&&appearance.Available,settings.Shortcuts,new(notifications.Settings.Progress,notifications.Settings.Completion,notifications.Available),imported); }
     object Activity(){bool available=history.Read(out var records);return new ActivityDto(available,records.Select(r=>new ActivityRowDto(r.AttemptId,r.StartedUtc,r.EndedUtc,r.DurationMs,r.Source.ToString(),r.Outcome.ToString(),r.Code.ToString(),DiagnosticMessages.Text(r.Code))).ToArray());}
-    async Task<object> HealthAsync(CancellationToken token){var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return new HealthDto(h.Overall.ToString(),VersionLabel(),h.BrowserIntegrationEnabled,h.Checks.Append(worker).Select(c=>new CheckDto(c.Id,c.Id,c.State.ToString(),c.Code.ToString(),DiagnosticMessages.Text(c.Code),c.Action.ToString())).ToArray());}
-    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem,release?.Asset is not null,downloaded is not null);
+    void InvalidateProbe(){if(probeFingerprint!=HelperReadiness.Fingerprint())worker=DiagnosticChecks.NotTested;}
+    async Task<string> ReadinessAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending")));}
+    async Task<object> HealthAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return new HealthDto(h.Overall.ToString(),VersionLabel(),h.BrowserIntegrationEnabled,h.Checks.Append(worker).Select(c=>new CheckDto(c.Id,c.Id,c.State.ToString(),c.Code.ToString(),DiagnosticMessages.Text(c.Code),c.Action.ToString())).ToArray(),HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))));}
+    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem,release?.Asset is not null,downloaded is not null,release?.Page.ToString());
     Task<int> RunHelperAsync(string argument,CancellationToken token)=>RunExecutableAsync(LegacyProgram.InstalledExe,argument,token);
-    static async Task<int> RunExecutableAsync(string executable,string argument,CancellationToken token){var start=new ProcessStartInfo(executable){UseShellExecute=true};start.ArgumentList.Add(argument);using var child=Process.Start(start)??throw new DesktopOperationException("OPERATION_FAILED","The helper could not start.");await child.WaitForExitAsync(token);return child.ExitCode;}
-    public void Dispose(){background?.Dispose();downloadCancellation?.Cancel();downloaded?.Dispose();http.Dispose();}
+    static async Task<int> RunExecutableAsync(string executable,string argument,CancellationToken token){token.ThrowIfCancellationRequested();var start=new ProcessStartInfo(executable){UseShellExecute=true};foreach(var word in argument.Split(' ',StringSplitOptions.RemoveEmptyEntries))start.ArgumentList.Add(word);using var child=Process.Start(start)??throw new DesktopOperationException("OPERATION_FAILED","The helper could not start.");await child.WaitForExitAsync(CancellationToken.None);return child.ExitCode;}
+    public void Dispose(){Interlocked.Exchange(ref disposed,1);labels.Dispose();background?.Dispose();downloadCancellation?.Cancel();downloaded?.Dispose();http.Dispose();}
 }
 
 

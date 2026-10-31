@@ -18,11 +18,11 @@ internal sealed record LayoutSettings(int Version, WindowPreset[] Presets, Dicti
 {
     internal static LayoutSettings Default => new(1, [], new()
     {
-        ["Manager"] = (int)(Keys.Control | Keys.Alt | Keys.M),
-        ["SideBySide"] = (int)(Keys.Control | Keys.Alt | Keys.D1),
-        ["Grid"] = (int)(Keys.Control | Keys.Alt | Keys.D2),
-        ["Saved"] = (int)(Keys.Control | Keys.Alt | Keys.R),
-        ["Recover"] = (int)(Keys.Control | Keys.Alt | Keys.O)
+        ["Manager"] = 393293,
+        ["SideBySide"] = 393265,
+        ["Grid"] = 393266,
+        ["Saved"] = 393298,
+        ["Recover"] = 393295
     });
 }
 
@@ -186,7 +186,7 @@ internal sealed class LayoutStore(string? file = null)
         }
         if (settings.Shortcuts.Count != LayoutSettings.Default.Shortcuts.Count ||
             settings.Shortcuts.Keys.Any(k => !LayoutSettings.Default.Shortcuts.ContainsKey(k)) ||
-            settings.Shortcuts.Values.Any(k => !ShortcutPolicy.Valid((Keys)k)) ||
+            settings.Shortcuts.Values.Any(k => !ShortcutPolicy.Valid(k)) ||
             settings.Shortcuts.Values.Distinct().Count() != settings.Shortcuts.Count) throw new InvalidDataException();
     }
 }
@@ -197,10 +197,10 @@ internal static class ShortcutPolicy
     {
         "SideBySide" => "Side-by-side", "Saved" => "Restore preset", "Recover" => "Recover off-screen", _ => command
     };
-    internal static bool Valid(Keys keys)
+    internal static bool Valid(int keys)
     {
-        var code = keys & Keys.KeyCode;
-        return (code is >= Keys.A and <= Keys.Z or >= Keys.D0 and <= Keys.D9 or >= Keys.F1 and <= Keys.F11) &&
-            (keys & Keys.Modifiers) != 0 && (keys & ~(Keys.KeyCode | Keys.Control | Keys.Alt | Keys.Shift)) == 0;
+        var code = keys & 65535;
+        return (code is >= 65 and <= 90 or >= 48 and <= 57 or >= 112 and <= 122) &&
+            (keys & 0x70000) != 0 && (keys & ~0x7ffff) == 0;
     }
 }

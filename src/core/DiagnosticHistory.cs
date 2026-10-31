@@ -116,6 +116,8 @@ internal sealed class DiagnosticHistory
 
 internal sealed class LaunchAttempt : IDisposable
 {
+    internal bool PlayerStarted=>result.RobloxStarted==true;
+    internal OperationResult ToOperationResult()=>new(result.Outcome switch {LaunchOutcome.Confirmed=>OperationOutcome.Succeeded,LaunchOutcome.Warning=>OperationOutcome.Warning,LaunchOutcome.Failed=>OperationOutcome.Failed,_=>OperationOutcome.Unknown},result.Code.ToString(),DiagnosticMessages.Text(result.Code));
     private readonly DiagnosticHistory history;
     private readonly LaunchNotificationPublisher publisher;
     private readonly Stopwatch elapsed = Stopwatch.StartNew();

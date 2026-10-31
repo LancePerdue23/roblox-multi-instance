@@ -5,6 +5,12 @@ namespace RobloxLaunchHelper;
 
 internal static class PlayerRecovery
 {
+    internal static string WithTarget(string? command,string player)
+    {
+        try { if(command is not null){_ = Launch.BuildStart(command,null);return string.Join(" ",new[]{player}.Concat(Launch.SplitCommand(command).Skip(1)).Select(Quote));} }
+        catch(InvalidOperationException) { }
+        return $"{Quote(player)} \"%1\"";
+    }
     internal static bool Valid(string? command, Func<string, bool>? exists = null, Func<string, bool>? trusted = null)
     {
         if (string.IsNullOrWhiteSpace(command)) return false;
@@ -77,22 +83,9 @@ internal static class PlayerRecovery
         return result.Append('\\', slashes * 2).Append('"').ToString();
     }
 
-    internal static string Choose(IReadOnlyList<string> paths)
-    {
-        using var form = new Form { Text = "Choose an official Roblox player", Width = 850, Height = 330,
-            StartPosition = FormStartPosition.CenterScreen, MinimizeBox = false, MaximizeBox = false };
-        var list = new ListBox { Dock = DockStyle.Fill, HorizontalScrollbar = true };
-        list.Items.AddRange(paths.Cast<object>().ToArray());
-        var ok = new Button { Text = "Use selected player", AutoSize = true, Enabled = false, DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true }; buttons.Controls.AddRange([ok, cancel]);
-        list.SelectedIndexChanged += (_, _) => ok.Enabled = list.SelectedIndex >= 0;
-        form.Controls.Add(list); form.Controls.Add(buttons);
-        form.Controls.Add(new Label { Dock = DockStyle.Top, Height = 45, Text = "Several signed official players were found. Select the installation to use; no candidate is selected automatically." });
-        form.AcceptButton = ok; form.CancelButton = cancel;
-        if (form.ShowDialog() != DialogResult.OK || list.SelectedItem is not string path) throw new OperationCanceledException();
-        return path;
-    }
+    internal static Func<IReadOnlyList<string>,string>? PlayerSelector;
+    internal static string Choose(IReadOnlyList<string> paths)=>PlayerSelector?.Invoke(paths)??throw new UserError("Several trusted players were found. Specify --player with an exact signed player path.");
+
 }
 
 internal sealed record ProtocolEdit(string Scheme, string Path, string Name, StoredValue? Before, StoredValue? After);

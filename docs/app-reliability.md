@@ -1,0 +1,11 @@
+# Operation and discovery contracts
+
+Operations are tracked by request ID through bridge, native host, and facade. Completed unsuccessful outcomes are data, while malformed requests and transport errors remain errors. Shared results distinguish Succeeded, Warning, PartiallySucceeded, Failed, Canceled, and Unknown and carry stable codes and safe messages. Accepted window closure is described as a request, not a confirmed process exit. Cleanup reports stopped, skipped, failed, and unconfirmed counts.
+
+Host/facade guards permit a launch and download together and allow navigation and read-only work. Window mutations serialize with each other; preferences serialize separately; maintenance excludes other mutations. Instance discovery and preference snapshots have their own gates. Timed-out mutations stay Unknown until their actual response; their host lease remains held. Downloads, launch observation, and page-owned discovery can be canceled individually. Installer commits cannot be canceled through a request-wait cancellation.
+
+The sidebar reports Not installed, Installed — not tested, Ready, Needs repair, Update required, or Unable to verify. Read-only checks never start a worker. Ready requires a current-session explicit probe. Installation/configuration changes invalidate that probe. Disabled integration is supported. Version and readiness refresh after maintenance; handoff closes the app and setup reports its own final result.
+
+Discovery returns processes/windows/metrics without reading logs or requesting profiles. Account enrichment has four workers, one pending job per process lifetime, bounded log reads, two-second HTTP requests, and 10/30-second retry/cache intervals. Labels remain transient and are delivered against opaque IDs and a discovery generation; exited, reused, obsolete, and disposed targets are ignored. Refresh ticks wait five seconds after completion and manual refreshes coalesce. Leaving Instances cancels and drains page-owned work.
+
+Tests cover unsuccessful resolved responses, request identity, cancellation, Unknown reconciliation, guard conflicts, readiness, enrichment concurrency, package isolation, and existing native safety policies. Live authentication, gameplay, setup, and display acceptance are separate. Multi-account authentication and batch launch orchestration are not implemented by this change.

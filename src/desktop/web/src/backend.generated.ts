@@ -18,6 +18,7 @@ export interface AppStateDto {
   helperVersion: string;
   helperInstalled: boolean;
   sharedNotice: string;
+  readiness: string;
 }
 export interface CheckDto {
   id: string;
@@ -32,6 +33,7 @@ export interface HealthDto {
   helperVersion: string;
   browserIntegrationEnabled: boolean | null;
   checks: CheckDto[];
+  readiness: string;
 }
 export interface InstanceDto {
   id: string;
@@ -47,6 +49,7 @@ export interface InstanceListDto {
   available: boolean;
   unavailable: number;
   instances: InstanceDto[];
+  generation: number;
 }
 export interface LayoutStateDto {
   monitors: MonitorDto[];
@@ -64,6 +67,18 @@ export interface NotificationsDto {
   showProgress: boolean;
   showCompletion: boolean;
   available: boolean;
+}
+export interface OperationItemDto {
+  id: string;
+  outcome: string;
+  code: string;
+  message: string;
+}
+export interface OperationResultDto {
+  outcome: string;
+  code: string;
+  message: string;
+  items: OperationItemDto[];
 }
 export interface PlacementDto {
   id: string;
@@ -114,4 +129,5 @@ export interface UpdateDto {
   downloadProblem: string | null;
   canDownload: boolean;
   downloaded: boolean;
+  releasePage: string | null;
 }

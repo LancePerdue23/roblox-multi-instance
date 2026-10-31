@@ -64,9 +64,13 @@ internal static class DiagnosticChecks
         {
             if (!File.Exists(Program.InstalledExe)) return Result("helper", CheckState.Failed, DiagnosticCode.NotInstalled, Remediation.Setup);
             string? installed = FileVersionInfo.GetVersionInfo(Program.InstalledExe).FileVersion;
-            string? running = installed; // Preview has a separate version; compare the helper with itself, not the UI host.
-            return Result("helper", installed == running ? CheckState.Healthy : CheckState.Warning,
-                installed == running ? DiagnosticCode.Ready : DiagnosticCode.HelperVersionMismatch, installed == running ? Remediation.None : Remediation.Repair);
+            string? running = typeof(Program).Assembly.GetName().Version?.ToString();
+            if(Distribution.UnsupportedProtocol())return Result("helper",CheckState.Warning,DiagnosticCode.HelperVersionMismatch,Remediation.Setup);
+            var metadata=Distribution.Installed();
+            if(metadata is null)return Result("helper",CheckState.Warning,DiagnosticCode.LegacyInstallation,Remediation.Setup);
+            bool compatible=UpdateVersion.Parse(installed)==UpdateVersion.Parse(running) && (metadata is null || metadata.Protocol==Distribution.ProtocolVersion && UpdateVersion.Parse(metadata.Version)==UpdateVersion.Parse(installed));
+            return Result("helper", compatible ? CheckState.Healthy : CheckState.Warning,
+                compatible ? DiagnosticCode.Ready : DiagnosticCode.HelperVersionMismatch, compatible ? Remediation.None : Remediation.Repair);
         }));
         foreach (string scheme in Installation.Schemes)
         {

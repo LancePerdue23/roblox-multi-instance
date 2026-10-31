@@ -12,7 +12,7 @@ try {
         Push-Location (Join-Path $PSScriptRoot 'web')
         try { & npm.cmd ci; if ($LASTEXITCODE) { throw 'Frontend restore failed.' }; & npm.cmd run build; if ($LASTEXITCODE) { throw 'Frontend build failed.' } } finally { Pop-Location }
     }
-    & $Dotnet publish (Join-Path $PSScriptRoot 'host\RobloxMultiInstance.csproj') -c Release -r win-x64 --self-contained true -p:NuGetAudit=false -p:UseSharedCompilation=false --disable-build-servers -o $taskOutput
+    & $Dotnet publish (Join-Path $PSScriptRoot 'host\RobloxMultiInstance.csproj') -c Release -r win-x64 --self-contained true -p:NuGetAudit=false -p:UseSharedCompilation=false -p:BuildInParallel=false --disable-build-servers -o $taskOutput
     if ($LASTEXITCODE) { throw 'Desktop publish failed.' }
     $taskWeb = Join-Path $taskOutput 'web'
     New-Item -ItemType Directory -Force $taskWeb | Out-Null

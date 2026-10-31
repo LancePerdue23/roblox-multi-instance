@@ -13,6 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="app.ico" />
+    <ProjectReference Include="../presentation/RobloxMultiInstance.Presentation.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <ProjectReference Include="../backend/RobloxMultiInstance.Backend.csproj" />
   </ItemGroup>

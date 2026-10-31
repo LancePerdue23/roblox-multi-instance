@@ -3,9 +3,11 @@ using System.Text;
 using System.Text.Json;
 namespace RobloxMultiInstance;
 
-public sealed record AppStateDto(string Version,string HelperVersion,bool HelperInstalled,string SharedNotice);
+public sealed record AppStateDto(string Version,string HelperVersion,bool HelperInstalled,string SharedNotice, string Readiness = "Unable to verify");
 public sealed record InstanceDto(string Id,string Title,int Pid,string? Username,double? CpuPercent,ulong? WorkingSet,DateTime Started,bool HasWindow);
-public sealed record InstanceListDto(bool Available,int Unavailable,InstanceDto[] Instances);
+public sealed record InstanceListDto(bool Available,int Unavailable,InstanceDto[] Instances,long Generation=0);
+public sealed record OperationItemDto(string Id,string Outcome,string Code,string Message);
+public sealed record OperationResultDto(string Outcome,string Code,string Message,OperationItemDto[] Items);
 public sealed record NotificationsDto(bool ShowProgress,bool ShowCompletion,bool Available);
 public sealed record SettingsDto(string Scheme,bool Available,Dictionary<string,int> Shortcuts,NotificationsDto Notifications,bool Imported);
 public sealed record RectDto(int X,int Y,int Width,int Height);
@@ -16,10 +18,10 @@ public sealed record LayoutStateDto(MonitorDto[] Monitors,PresetDto[] Presets,Di
 public sealed record PlacementDto(string Id,int X,int Y,int Width,int Height,int Slot);
 public sealed record PlanDto(string PlanId,bool Valid,string? Error,string[] Notes,MonitorDto[] Monitors,PlacementDto[] Placements);
 public sealed record CheckDto(string Id,string Name,string State,string Code,string Message,string Action);
-public sealed record HealthDto(string Overall,string HelperVersion,bool? BrowserIntegrationEnabled,CheckDto[] Checks);
+public sealed record HealthDto(string Overall,string HelperVersion,bool? BrowserIntegrationEnabled,CheckDto[] Checks,string Readiness="Unable to verify");
 public sealed record ActivityRowDto(Guid Id,DateTimeOffset StartedUtc,DateTimeOffset? EndedUtc,long? DurationMs,string Source,string Outcome,string Code,string Message);
 public sealed record ActivityDto(bool Available,ActivityRowDto[] Records);
-public sealed record UpdateDto(string HelperVersion,bool Available,string? Version,string? Title,string? Notes,string? DownloadProblem,bool CanDownload,bool Downloaded);
+public sealed record UpdateDto(string HelperVersion,bool Available,string? Version,string? Title,string? Notes,string? DownloadProblem,bool CanDownload,bool Downloaded,string? ReleasePage=null);
 
 /// <summary>Deterministically generates the page-state TypeScript interfaces from these C# DTOs.</summary>
 public static class BackendContractEmitter

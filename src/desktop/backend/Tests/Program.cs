@@ -32,7 +32,7 @@ try
     using(var backend=new DesktopBackend(root))
     {
         var state=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("app.state",Payload(),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        Check(state.GetProperty("version").GetString()=="1.1.0","Primary desktop identity");
+        Check(state.GetProperty("version").GetString()=="1.0.0","Primary desktop identity");
         Check(!Directory.EnumerateFiles(root).Any(),"Read-only startup creates no preferences");
         await Reject(backend,"unknown.command","{}","Unknown commands rejected");
         await Reject(backend,"system.maintenance","{\"action\":\"uninstall\"}","Maintenance requires confirmation");

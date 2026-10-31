@@ -229,7 +229,7 @@ internal static class PlacementNative
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
     internal static LayoutMonitor[] Monitors()
     {
-        return Screen.AllScreens.Select(screen =>
+        return NativeScreens.All.Select(screen =>
         {
             var device = new DisplayDevice { Size = Marshal.SizeOf<DisplayDevice>() };
             // EDD_GET_DEVICE_INTERFACE_NAME returns a persistent monitor interface path.
@@ -254,7 +254,7 @@ internal static class PlacementNative
     {
         long style = GetWindowLongPtr(window, -16).ToInt64();
         if ((style & 0x00c00000) != 0) return false;
-        var screen = Screen.FromHandle(window);
+        var screen = NativeScreens.FromHandle(window);
         var bounds = Bounds(window);
         if (IsIconic(window))
         {
@@ -270,7 +270,7 @@ internal static class PlacementNative
         var b = Bounds(target.Window);
         var placement = new WindowPlacement { Length = Marshal.SizeOf<WindowPlacement>() };
         if (!GetWindowPlacement(target.Window, ref placement)) throw new Win32Exception();
-        var screen = Screen.FromHandle(target.Window);
+        var screen = NativeScreens.FromHandle(target.Window);
         if (IsIconic(target.Window) || IsZoomed(target.Window))
         {
             // WINDOWPLACEMENT normal coordinates use workspace coordinates for non-tool windows.

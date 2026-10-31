@@ -7,5 +7,6 @@
     <Nullable>enable</Nullable>
     <AssemblyName>RobloxLaunchHelper.Tests</AssemblyName>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../src/helper/RobloxLaunchHelper.csproj" /></ItemGroup>
+  <ItemGroup><Compile Remove="retired-ui/**/*.cs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../src/helper/RobloxLaunchHelper.csproj" /><ProjectReference Include="../src/desktop/presentation/RobloxMultiInstance.Presentation.csproj" /></ItemGroup>
 </Project>

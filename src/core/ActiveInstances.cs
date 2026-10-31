@@ -51,7 +51,6 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
     Func<double>? seconds = null, bool collectMetrics = true) : IInstanceCollector
 {
     private readonly Dictionary<ProcessKey, string> trust = [];
-    private readonly InstanceAccounts accounts = new();
     private readonly Dictionary<ProcessKey, (long Cpu, double At)> samples = [];
     private readonly Func<double> clock = seconds ?? (() => (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency);
 
@@ -103,7 +102,7 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
                     }
                     else samples.Remove(key);
                     seen.Add(key);
-                    string? username = collectMetrics && platform is InstancePlatform ? accounts.Resolve(key,token) : null;
+                    string? username = null; // Labels are enriched asynchronously by the desktop owner.
                     token.ThrowIfCancellationRequested();
                     if (!process.IsAlive) continue;
                     rows.Add(new(key, windows, percent, memory, cpu is >= 0, anyVisibleWindow,username));
@@ -113,7 +112,6 @@ internal sealed class InstanceCollector(IInstancePlatform platform, string sid, 
             }
             foreach (var key in trust.Keys.Where(k => !seen.Contains(k)).ToArray()) trust.Remove(key);
             foreach (var key in samples.Keys.Where(k => !seen.Contains(k)).ToArray()) samples.Remove(key);
-            accounts.Retain(seen);
             return new(rows.OrderBy(x => x.Key.Created).ThenBy(x => x.Key.Id).ToArray(), unavailable);
         }
         catch (OperationCanceledException) { trust.Clear(); samples.Clear(); throw; }

@@ -40,7 +40,7 @@ internal sealed class InstanceAccounts(
     private static IEnumerable<string> ReadLogs(ProcessKey key,CancellationToken token)
     {
         var directory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Roblox","logs");
-        foreach(var file in OwnedLogs(directory,key,token))
+        foreach(var file in OwnedLogs(directory,key,token).Take(4))
         {
             string text;
             try

@@ -10,7 +10,8 @@ internal enum DiagnosticCode
     WorkerNotTested, WorkerReady, WorkerUnavailable, WorkerTimeout, CompletionUnconfirmed,
     LaunchStarting, LaunchConfirmed, ProcessStartFailed, LaunchFailed, Interrupted,
     HistoryUnavailable, LogsUnavailable,
-    ProtocolChanged, ProtocolMissing, IntegrationDisabled, RecoveryPending
+    ProtocolChanged, ProtocolMissing, IntegrationDisabled, RecoveryPending,
+    PlayerExited, LegacyInstallation
 }
 internal enum Remediation { None, Setup, Repair, ReinstallRoblox, Refresh, OpenLogs, ClearHistory }
 internal sealed record HealthCheckResult(string Id, CheckState State, DiagnosticCode Code,
@@ -36,6 +37,7 @@ internal static class DiagnosticMessages
         DiagnosticCode.InvalidConfig => "Installation settings are missing or invalid. Run Repair.",
         DiagnosticCode.WrongAccount => "Use the Windows account that owns this installation.",
         DiagnosticCode.HelperVersionMismatch => "The installed helper version differs from this executable. Run Setup/Repair from the newer executable.",
+        DiagnosticCode.LegacyInstallation => "A legacy helper installation was found. Run the desktop or helper setup to upgrade explicitly; existing preferences and original protocol backups are preserved.",
         DiagnosticCode.PlayerMissing => "Roblox may have updated. Launch or reinstall official Roblox, then run Repair.",
         DiagnosticCode.SignatureRejected => "The saved Roblox player could not be trusted. Reinstall official Roblox, then run Repair.",
         DiagnosticCode.ProtocolMismatch => "Browser launch registration differs from the helper. Run Repair.",
@@ -54,6 +56,7 @@ internal static class DiagnosticMessages
         DiagnosticCode.LaunchStarting => "Launch is in progress. Refresh to see its result.",
         DiagnosticCode.LaunchConfirmed => "Roblox started; singleton release confirmed. This does not verify sign-in or in-game success.",
         DiagnosticCode.ProcessStartFailed => "Roblox could not start. Launch official Roblox normally, then run Repair.",
+        DiagnosticCode.PlayerExited => "Roblox closed during startup, so the new game could not open. A stuck Roblox background or tray process can cause this. Save your progress, close all Roblox games, then exit Roblox from the Windows system tray and try Play again. Existing games were left running.",
         DiagnosticCode.LaunchFailed => "Launch could not finish. Check diagnostics and run Repair.",
         DiagnosticCode.Interrupted => "The launcher exited without recording a final result. Completion is unknown.",
         DiagnosticCode.HistoryUnavailable => "Recent launch history is unavailable. Check folder access or Clear history to reset the store. Launch behavior is unaffected.",

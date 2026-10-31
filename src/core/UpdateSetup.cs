@@ -8,7 +8,8 @@ internal interface IUpdateSetupHandoff { Task StartAsync(string executable, Upda
 internal sealed class UpdateSetupHandoff : IUpdateSetupHandoff
 {
     internal static string ReadyName(int pid, long created) => @"Local\RobloxLaunchHelper-UpdateReady-" + Program.Sid + "-" + pid + "-" + created;
-    public async Task StartAsync(string executable, UpdateRelease release)
+    public Task StartAsync(string executable,UpdateRelease release)=>StartAsync(executable,release,[]);
+    internal async Task StartAsync(string executable, UpdateRelease release,IEnumerable<string> options)
     {
         var asset = release.Asset ?? throw new InvalidDataException();
         using var current = Process.GetCurrentProcess();
@@ -18,8 +19,19 @@ internal sealed class UpdateSetupHandoff : IUpdateSetupHandoff
         foreach (string argument in new[] { "--update-handoff", current.Id.ToString(CultureInfo.InvariantCulture),
             created.ToString(CultureInfo.InvariantCulture), release.Version.ToString(),
             asset.Size.ToString(CultureInfo.InvariantCulture), asset.Sha256 }) start.ArgumentList.Add(argument);
+        foreach(string option in options)start.ArgumentList.Add(option);
         using var child = Process.Start(start) ?? throw new IOException("Setup could not be started.");
         if (!await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(15)))) throw new IOException("Setup did not acknowledge the handoff.");
+    }
+    internal static async Task StartMaintenanceAsync(string executable,string action,IEnumerable<string>? options=null)
+    {
+        if(action is not ("setup" or "repair" or "recover"))throw new ArgumentException();
+        using var current=Process.GetCurrentProcess();long created=current.StartTime.ToUniversalTime().Ticks;
+        using var ready=new EventWaitHandle(false,EventResetMode.AutoReset,ReadyName(current.Id,created));
+        var start=new ProcessStartInfo(executable){UseShellExecute=false};
+        foreach(string arg in new[]{"--maintenance-handoff",current.Id.ToString(CultureInfo.InvariantCulture),created.ToString(CultureInfo.InvariantCulture),action}.Concat(options??[]))start.ArgumentList.Add(arg);
+        using var child=Process.Start(start)??throw new IOException("Setup could not start.");
+        if(!await Task.Run(()=>ready.WaitOne(TimeSpan.FromSeconds(15))))throw new IOException("Setup did not acknowledge the maintenance handoff.");
     }
 }
 
@@ -27,24 +39,24 @@ internal sealed class UpdateSetupHandoff : IUpdateSetupHandoff
 internal sealed class UpdateShutdownRequest : IDisposable
 {
     private readonly EventWaitHandle request;
-    private readonly System.Windows.Forms.Timer timer = new() { Interval = 250 };
+    private readonly System.Threading.Timer timer;
     private bool closing;
     private static string Name(int pid, long created) => @"Local\RobloxLaunchHelper-UpdateClose-" + Program.Sid + "-" + pid + "-" + created;
     internal UpdateShutdownRequest(Func<Task> close)
     {
         using var current = Process.GetCurrentProcess();
         request = new EventWaitHandle(false, EventResetMode.AutoReset, Name(current.Id, current.StartTime.ToUniversalTime().Ticks));
-        timer.Tick += async (_, _) =>
+        timer = new System.Threading.Timer(async _ =>
         {
             if (closing || !request.WaitOne(0)) return;
             closing = true;
             try { await close(); } finally { closing = false; }
-        };
-        timer.Start();
+        },null,250,250);
+
     }
     internal static void CloseManagers()
     {
-        foreach (var candidate in Process.GetProcessesByName(Program.Product))
+        foreach (var candidate in new[]{Program.Product,"RobloxMultiInstance"}.SelectMany(Process.GetProcessesByName))
         {
             using (candidate)
             {
@@ -52,7 +64,7 @@ internal sealed class UpdateShutdownRequest : IDisposable
                 {
                     var identity = Native.GetIdentity(candidate.Id);
                     if (identity.Sid != Program.Sid || identity.Elevated || identity.Session != Process.GetCurrentProcess().SessionId ||
-                        !string.Equals(identity.Image, Program.InstalledExe, StringComparison.OrdinalIgnoreCase)) continue;
+                        !new[]{Program.InstalledExe,Path.Combine(Program.InstallDirectory,"RobloxMultiInstance.exe")}.Contains(identity.Image,StringComparer.OrdinalIgnoreCase)) continue;
                     using var signal = EventWaitHandle.OpenExisting(Name(candidate.Id, candidate.StartTime.ToUniversalTime().Ticks));
                     signal.Set();
                 }
@@ -60,7 +72,7 @@ internal sealed class UpdateShutdownRequest : IDisposable
             }
         }
     }
-    public void Dispose() { timer.Stop(); timer.Dispose(); request.Dispose(); }
+    public void Dispose() { timer.Dispose(); request.Dispose(); }
 }
 
 internal static class UpdateInstallReadiness
@@ -129,26 +141,9 @@ internal static class UpdateSetup
         }
         catch { return false; }
     }
-    internal static int Run(string[] args)
-    {
-        if (Program.Elevated || args.Length != 6 || !int.TryParse(args[1], out int pid) || !long.TryParse(args[2], out long created) ||
-            UpdateVersion.Parse(args[3]) is not { } version || !long.TryParse(args[4], out long size) || size is <= 0 or > UpdateFiles.MaxDownload ||
-            !System.Text.RegularExpressions.Regex.IsMatch(args[5], @"\A[A-Fa-f0-9]{64}\z") || !IsStagedExecutable(Environment.ProcessPath!, UpdateFiles.Staging)) return 2;
-        using var parent = Process.GetProcessById(pid);
-        if (!SameParent(parent, created)) return 2;
-        using var guard = new Mutex(false, @"Global\RobloxLaunchHelper-UpdateSetup-" + Program.Sid);
-        bool held;
-        try { held = guard.WaitOne(0); } catch (AbandonedMutexException) { held = true; }
-        if (!held) { MessageBox.Show("Another update setup is already open. Finish or close that window before retrying.", "Update setup"); return 0; }
-        try
-        {
-            using (var ready = EventWaitHandle.OpenExisting(UpdateSetupHandoff.ReadyName(pid, created))) ready.Set();
-            Application.EnableVisualStyles();
-            using var form = new UpdateSetupForm(parent, version, size, args[5]);
-            Application.Run(form); return 0;
-        }
-        finally { guard.ReleaseMutex(); }
-    }
+    internal static Func<string[],int>? Present;
+    internal static int Run(string[] args)=>Present?.Invoke(args)??2;
+
 }
 
 internal interface IUpdateSetupOperations : IDisposable
@@ -205,50 +200,5 @@ internal static class UpdateSetupFlow
         status("Approve the Windows administrator prompt to install this update.");
         int result = await operations.InstallAsync(token);
         if (UpdateSetup.ResultMessage(result, operations.InstalledVersion(), version) is { } error) throw new UserError(error);
-    }
-}
-
-internal sealed class UpdateSetupForm : Form
-{
-    private readonly Version version;
-    private readonly IUpdateSetupOperations operations;
-    private readonly Label status = new() { AutoSize = true, MaximumSize = new(470, 0) };
-    private readonly Button retry = new() { Text = "Retry setup", AutoSize = true, Visible = false };
-    private readonly Button open = new() { Text = "Open app", AutoSize = true, Visible = false };
-    private readonly CancellationTokenSource closed = new();
-    private bool running;
-    internal UpdateSetupForm(Process parent, Version version, long size, string digest)
-    {
-        this.version = version; operations = new UpdateSetupOperations(parent, version, size, digest);
-        Text = "Roblox Multi Instance — Update setup"; ClientSize = new(510, 230); AutoScaleMode = AutoScaleMode.Dpi;
-        StartPosition = FormStartPosition.CenterScreen;
-        var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new(18) };
-        layout.Controls.Add(status); layout.Controls.Add(retry); layout.Controls.Add(open); Controls.Add(layout);
-        retry.Click += async (_, _) => await InstallAsync();
-        open.Click += (_, _) =>
-        {
-            try { var start = new ProcessStartInfo(Program.InstalledExe) { UseShellExecute = false }; start.ArgumentList.Add("--diagnostics"); Process.Start(start)?.Dispose(); Close(); }
-            catch { status.Text = "The app could not be opened. Use Diagnostics in the Start menu."; }
-        };
-        Shown += async (_, _) => await InstallAsync();
-        FormClosing += (_, e) => { if (running) { e.Cancel = true; return; } closed.Cancel(); };
-    }
-    private async Task InstallAsync()
-    {
-        if (running) return;
-        running = true; retry.Visible = false;
-        try
-        {
-            await UpdateSetupFlow.RunAsync(operations, version, text => status.Text = text, closed.Token);
-            status.Text = $"Updated to version {UpdateVersion.Label(version)}."; open.Visible = true;
-        }
-        catch (UserError e) { status.Text = e.Message; retry.Visible = true; }
-        catch (Exception) { status.Text = "Update setup could not finish. The downloaded update is retained. Close other helper windows and try again."; retry.Visible = true; }
-        finally { running = false; }
-    }
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) { closed.Cancel(); closed.Dispose(); operations.Dispose(); }
-        base.Dispose(disposing);
     }
 }

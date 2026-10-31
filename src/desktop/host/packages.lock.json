@@ -11,11 +11,17 @@
       "robloxmultiinstance.backend": {
         "type": "Project",
         "dependencies": {
-          "RobloxMultiInstance.Core": "[1.1.0, )"
+          "RobloxMultiInstance.Core": "[1.0.0, )"
         }
       },
       "robloxmultiinstance.core": {
         "type": "Project"
+      },
+      "robloxmultiinstance.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "RobloxMultiInstance.Core": "[1.0.0, )"
+        }
       }
     },
     "net10.0-windows7.0/win-x64": {

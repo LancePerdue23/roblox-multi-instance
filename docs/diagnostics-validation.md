@@ -1,3 +1,5 @@
+> Historical feature validation notes. Current desktop testing uses root Test.ps1 and Audit.ps1; shared/helper checks use Test-Shared.ps1 (including -Integration when explicitly required). Retired UI instructions below are historical. See [milestone audit](milestone-audit.md).
+
 # Diagnostics acceptance checks
 
 Run `./Test.ps1` and `./Build.ps1` with a supported .NET 10 SDK. If using an ignored repository-local SDK, pass `-Dotnet "$PWD/.build/sdk/dotnet.exe"` to each script. Default tests cover history limits and recovery, concurrent writers, read-only effective access, actionable failures, privacy canaries, bounded ZIP export, cancellation before worker startup, and synthetic dashboard rendering. Preview PNGs are written under `.build/`.

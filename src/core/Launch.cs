@@ -102,22 +102,34 @@ internal static class Launch
         catch (Exception e) { Log.Write("setup-probe-failed", e.GetType().Name, e.HResult); return 1; }
     }
 
-    internal static async Task<int> RunAsync(string? uri)
+    internal static async Task<int> RunAsync(string? uri)=>(await RunResultAsync(uri)).ExitCode;
+
+    internal static async Task<OperationResult> RunResultAsync(string? uri,CancellationToken token=default)
     {
         // Do not write per-user diagnostic data from an elevated launch attempt.
         if (Program.Elevated) throw new UserError("Launch Roblox normally, without Run as administrator. Only setup and the handle helper need administrator access.");
+        token.ThrowIfCancellationRequested();
+        var edition=Distribution.Installed();
+        if(edition is not null&&(UpdateVersion.Parse(edition.Version)!=UpdateVersion.Parse(typeof(Program).Assembly.GetName().Version?.ToString())||UpdateVersion.Parse(System.Diagnostics.FileVersionInfo.GetVersionInfo(Program.InstalledExe).FileVersion)!=UpdateVersion.Parse(edition.Version)))
+            return new(OperationOutcome.Failed,"HELPER_VERSION_MISMATCH","The app and helper versions differ. Run the matching setup before launching.");
         using var attempt = new LaunchAttempt(uri);
-        try { return await RunCoreAsync(uri, attempt); }
+        try { return await RunCoreAsync(uri, attempt,token); }
+        catch(OperationCanceledException) when(token.IsCancellationRequested)
+        {
+            attempt.Complete(attempt.PlayerStarted?LaunchOutcome.Warning:LaunchOutcome.Failed,attempt.PlayerStarted?DiagnosticCode.CompletionUnconfirmed:DiagnosticCode.LaunchFailed);
+            await attempt.FinishAsync();
+            return new(attempt.PlayerStarted?OperationOutcome.Unknown:OperationOutcome.Canceled,"OBSERVATION_CANCELED",attempt.PlayerStarted?"Launch observation canceled. Roblox was left running; completion is unknown.":"Launch canceled before starting Roblox.");
+        }
         catch (Exception e)
         {
             attempt.Error(e.HResult);
             Log.Write("launch-failed", "", e.HResult);
-            if (await attempt.FinishAsync()) return 1;
-            throw; // Existing Program.Main warning is the fallback if coordination failed.
+            await attempt.FinishAsync();
+            return attempt.ToOperationResult();
         }
     }
 
-    private static async Task<int> RunCoreAsync(string? uri, LaunchAttempt attempt)
+    private static async Task<OperationResult> RunCoreAsync(string? uri, LaunchAttempt attempt,CancellationToken token)
     {
         Log.Write("launch-requested", uri is null ? "desktop" : uri.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) ? "roblox-player" : "roblox", Environment.ProcessId);
         attempt.SetFallback(LaunchOutcome.Failed, DiagnosticCode.InvalidConfig);
@@ -140,15 +152,19 @@ internal static class Launch
         NamedPipeClientStream? pipe = null;
         string? helperError = null;
         DiagnosticCode warningCode = DiagnosticCode.CompletionUnconfirmed;
-        using var timeout = new CancellationTokenSource(90000);
+        bool playerExited = false;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);timeout.CancelAfter(90000);
+        var startupCollector = LaunchStartup.Collector();
+        var baseline = await LaunchStartup.PrepareAsync(startupCollector, timeout.Token);
         try
         {
             try
             {
-                pipe = await ConnectAsync();
+                pipe = await ConnectAsync(timeout.Token);
                 await Protocol.WriteAsync(pipe, "LAUNCH", timeout.Token);
                 if (await Protocol.ReadAsync(pipe, timeout.Token) != "READY") throw new IOException();
             }
+            catch(OperationCanceledException) when(token.IsCancellationRequested){throw;}
             catch (Exception e)
             {
                 helperError = "The administrator helper was unavailable. Run Repair before opening another instance.";
@@ -158,44 +174,63 @@ internal static class Launch
                 pipe?.Dispose(); pipe = null;
             }
             attempt.SetFallback(LaunchOutcome.Failed, DiagnosticCode.ProcessStartFailed);
+            token.ThrowIfCancellationRequested();
             using var game = Process.Start(start) ?? throw new UserError("Roblox could not start. Run Repair.");
             attempt.Started();
-            UpdateHost.TryStartAutomatic();
+            ServicePresentation.AutomaticUpdate?.Invoke();
             attempt.SetFallback(LaunchOutcome.Warning, DiagnosticCode.CompletionUnconfirmed);
             Log.Write("roblox-launched", "", game.Id);
-            if (pipe is not null)
+            async Task<string> WorkerResultAsync()
             {
+                if (pipe is null) return "UNAVAILABLE";
                 try
                 {
                     await Protocol.WriteAsync(pipe, "STARTED", timeout.Token);
-                    string result = await Protocol.ReadAsync(pipe, timeout.Token);
-                    if (result != "OK")
-                    {
-                        warningCode = result == "TIMEOUT" ? DiagnosticCode.WorkerTimeout : DiagnosticCode.CompletionUnconfirmed;
-                        helperError = DiagnosticMessages.Text(warningCode);
-                    }
+                    return await Protocol.ReadAsync(pipe, timeout.Token);
                 }
                 catch (Exception e)
                 {
                     attempt.Error(e.HResult);
                     helperError = "The helper could not confirm completion. Roblox was left running. Check diagnostics or run Repair.";
                     Log.Write("worker-result-failed", e.GetType().Name, e.HResult);
+                    return "UNCONFIRMED";
+                }
+            }
+            Task<string> workerResult = WorkerResultAsync();
+            playerExited = await LaunchStartup.ExitedAsync(game, startupCollector, baseline, workerResult, timeout.Token);
+            if (playerExited)
+            {
+                // End the worker wait promptly and observe its completion before
+                // publishing the actual startup failure. Never restart a launch URI.
+                timeout.Cancel();
+                pipe?.Dispose();
+                await workerResult;
+                warningCode = DiagnosticCode.PlayerExited;
+                helperError = DiagnosticMessages.Text(warningCode);
+                Log.Write("roblox-startup-exited", "", game.Id);
+            }
+            else
+            {
+                string result = await workerResult;
+                if (result is not ("OK" or "UNAVAILABLE" or "UNCONFIRMED"))
+                {
+                    warningCode = result == "TIMEOUT" ? DiagnosticCode.WorkerTimeout : DiagnosticCode.CompletionUnconfirmed;
+                    helperError = DiagnosticMessages.Text(warningCode);
                 }
             }
         }
         finally { pipe?.Dispose(); }
         if (helperError is not null)
         {
-            attempt.Complete(LaunchOutcome.Warning, warningCode);
+            attempt.Complete(playerExited ? LaunchOutcome.Failed : LaunchOutcome.Warning, warningCode);
             Log.Write("launch-warning");
             if (!await attempt.FinishAsync())
-                MessageBox.Show(helperError + "\n\nDiagnostics: " + Log.DirectoryPath + "\nWorker logs: " + Path.Combine(Program.InstallDirectory, "logs"),
-                    "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return 1;
+                ServicePresentation.Warning?.Invoke(helperError);
+            return new(playerExited?OperationOutcome.Failed:OperationOutcome.Warning,warningCode.ToString(),helperError);
         }
         attempt.Complete(LaunchOutcome.Confirmed, DiagnosticCode.LaunchConfirmed);
         await attempt.FinishAsync();
-        return 0;
+        return new(OperationOutcome.Succeeded,"LAUNCH_CONFIRMED",DiagnosticMessages.Text(DiagnosticCode.LaunchConfirmed));
     }
 }
 

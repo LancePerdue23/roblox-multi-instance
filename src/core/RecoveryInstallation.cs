@@ -88,6 +88,18 @@ internal static partial class Installation
         if (!existing && action != "setup") throw new UserError("No installation was found for this Windows account. Run Setup first.");
         var config = existing ? ReadConfig() : new InstallConfig { OwnerSid = owner };
         RollbackPending(config);
+        string? selectedPlayer=null;
+        if(File.Exists(Distribution.RequestPath))
+        {
+            var request=JsonSerializer.Deserialize<SetupRequest>(File.ReadAllBytes(Distribution.RequestPath))??throw new InvalidDataException();
+            if(!existing)config.BrowserIntegrationEnabled=request.Integration;
+            if(request.Player is string selected)
+            {
+                if(!PlayerRecovery.Valid($"\"{selected}\" \"%1\""))throw new UserError("The selected player failed verification.");
+                selectedPlayer=selected;
+                PlayerRecovery.PlayerSelector=paths=>paths.Contains(selected,StringComparer.OrdinalIgnoreCase)?selected:throw new UserError("The selected player changed.");
+            }
+        }
         bool previousEnabled = config.BrowserIntegrationEnabled;
         bool desiredEnabled = DesiredIntegration(action, previousEnabled);
         var before = Schemes.ToDictionary(s => s, s => ProtocolRecovery.Capture(Registry.CurrentUser, ProtocolPath(s)));
@@ -104,9 +116,9 @@ internal static partial class Installation
             {
                 string? backup = ProtocolRecovery.Command(config.Backups.GetValueOrDefault(scheme));
                 string? original = ProtocolRecovery.Command(config.OriginalBackups.GetValueOrDefault(scheme));
-                config.Commands[scheme] = PlayerRecovery.Resolve([wrapper ? null : current, config.Commands.GetValueOrDefault(scheme), backup, original,
+                config.Commands[scheme] = PlayerRecovery.Resolve([selectedPlayer is null?null:PlayerRecovery.WithTarget(config.Commands.GetValueOrDefault(scheme)??(wrapper?null:current),selectedPlayer),wrapper ? null : current, config.Commands.GetValueOrDefault(scheme), backup, original,
                     config.Commands.GetValueOrDefault("roblox-player")], PlayerRecovery.InstalledPlayers,
-                    silent ? _ => throw new UserError("Several official players were found. Select one using Recover/Repair first.") : PlayerRecovery.Choose);
+                    PlayerRecovery.Choose);
                 targets.Add(config.Commands[scheme]);
             }
             if (desiredEnabled)
@@ -160,9 +172,5 @@ internal static partial class Installation
         }
         if (action == "uninstall") { Uninstall(); return; }
         if (silent) return;
-        MessageBox.Show(desiredEnabled
-            ? "Roblox Launch Helper is ready. Browser integration is enabled."
-            : "Browser integration is disabled until you enable it again. Official browser launching is restored where the helper owned the registration. The desktop helper still works.",
-            "Roblox Launch Helper", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 }

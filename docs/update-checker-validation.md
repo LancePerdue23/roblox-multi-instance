@@ -1,6 +1,12 @@
+> Historical feature validation notes. Current desktop testing uses root Test.ps1 and Audit.ps1; shared/helper checks use Test-Shared.ps1 (including -Integration when explicitly required). Retired UI instructions below are historical. See [milestone audit](milestone-audit.md).
+
 # Update checker release and acceptance checklist
 
-## Publishing a compatible release
+## Current distribution and publication
+
+Use the shared version in `Directory.Build.props`, root `Package.ps1`, and `Test-Distribution.ps1`. The release assets are edition-specific installers plus the portable ZIP, checksums and `assets.json`; a standalone helper executable is no longer the current distribution. Follow [distribution preparation](distribution-preparation.md) and the [v1.0.0 acceptance gate](releases/v1.0.0.md). Keep the repository private and hold publication until acceptance is complete. The unauthenticated updater cannot access private releases; authenticated manual downloads remain necessary.
+
+## Historical standalone-helper publication procedure (superseded)
 
 1. Set `Version` in `src/RobloxLaunchHelper.csproj` to the release version and update the changelog. Use a stable numeric version such as `1.2.0`.
 2. Run `Test.ps1` and `Build.ps1` with the supported .NET 10 SDK. Publish the resulting self-contained Windows x64 `RobloxLaunchHelper.exe`; an ordinary framework-dependent build is not the release payload.

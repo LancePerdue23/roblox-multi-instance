@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>RobloxMultiInstance.Setup</AssemblyName><PublishSingleFile>true</PublishSingleFile><ApplicationManifest>../helper/app.manifest</ApplicationManifest></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../core/RobloxMultiInstance.Core.csproj" /><EmbeddedResource Include="$(PayloadZip)" LogicalName="payload.zip" Condition="'$(PayloadZip)' != ''" /></ItemGroup>
+</Project>

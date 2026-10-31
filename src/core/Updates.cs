@@ -113,9 +113,9 @@ internal sealed class GitHubReleaseSource(HttpClient client) : IReleaseSource
         using var content = await response.Content.ReadAsStreamAsync(timeout.Token);
         using var bytes = new MemoryStream();
         await UpdateFiles.CopyBoundedAsync(content, bytes, 1024 * 1024, null, timeout.Token);
-        return Parse(bytes.ToArray());
+        return Parse(bytes.ToArray(), Distribution.Installed()?.Edition);
     }
-    internal static UpdateRelease? Parse(byte[] json)
+    internal static UpdateRelease? Parse(byte[] json,string? edition=null)
     {
         using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
         var root = document.RootElement;
@@ -126,7 +126,8 @@ internal sealed class GitHubReleaseSource(HttpClient client) : IReleaseSource
             throw new InvalidDataException("Invalid release page.");
         string title = root.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString()! : "Update available";
         string notes = root.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.String ? body.GetString()! : "";
-        var matches = root.GetProperty("assets").EnumerateArray().Where(a => a.GetProperty("name").GetString() == Program.Product + ".exe").ToArray();
+        string assetName=edition is null?Program.Product+".exe":Distribution.SetupName(edition);
+        var matches = root.GetProperty("assets").EnumerateArray().Where(a => a.GetProperty("name").GetString() == assetName).ToArray();
         UpdateAsset? asset = null;
         string? problem = "This release does not contain a unique Windows executable. Use the release page or try again later.";
         if (matches.Length == 1)
@@ -140,7 +141,7 @@ internal sealed class GitHubReleaseSource(HttpClient client) : IReleaseSource
                 problem = "This release has an unsupported download size.";
             else if (!Uri.TryCreate(item.GetProperty("browser_download_url").GetString(), UriKind.Absolute, out var url) || !UpdateUrls.RepositoryUrl(url, "/releases/download/"))
                 problem = "This release has an unsupported download address.";
-            else { asset = new(Program.Product + ".exe", url, size, digest[7..].ToUpperInvariant()); problem = null; }
+            else { asset = new(assetName, url, size, digest[7..].ToUpperInvariant()); problem = null; }
         }
         return new(version, title, notes, page, asset, problem);
     }
@@ -148,7 +149,7 @@ internal sealed class GitHubReleaseSource(HttpClient client) : IReleaseSource
 
 internal static class UpdateFiles
 {
-    internal const long MaxDownload = 256L * 1024 * 1024;
+    internal const long MaxDownload = 512L * 1024 * 1024;
     internal static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Program.Product, "updates");
     internal static string Staging => Path.Combine(Root, "staging");
     internal static void RejectLinks(string path)
@@ -185,7 +186,7 @@ internal static class UpdateFiles
                     RejectLinks(directory);
                     // Only delete known files, never recursively follow an unexpected directory.
                     var files = Directory.GetFiles(directory);
-                    if (Directory.GetDirectories(directory).Length != 0 || files.Any(p => Path.GetFileName(p) is not ("RobloxLaunchHelper.exe" or "payload.part" or "lease"))) continue;
+                    if (Directory.GetDirectories(directory).Length != 0 || files.Any(p => Path.GetFileName(p) is not ("RobloxLaunchHelper.exe" or "RobloxMultiInstance-Setup.exe" or "RobloxLaunchHelper-Setup.exe" or "payload.part" or "lease"))) continue;
                     foreach (string file in files) RejectLinks(file);
                     using (new FileStream(Path.Combine(directory, "lease"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
                     {
@@ -209,9 +210,20 @@ internal interface IUpdateDownloader
     Task<DownloadedUpdate> DownloadAsync(UpdateRelease release, IProgress<long>? progress, CancellationToken token);
     Task VerifyAsync(string path, UpdateRelease release, CancellationToken token);
 }
-internal sealed class UpdateDownloader(HttpClient client, string staging, Func<string, Version?>? fileVersion = null) : IUpdateDownloader
+internal sealed class UpdateDownloader(HttpClient client, string staging, Func<string, Version?>? fileVersion = null,
+    Func<string,string,CancellationToken,Task>? inspectSetup = null) : IUpdateDownloader
 {
     private readonly Func<string, Version?> fileVersion = fileVersion ?? (path => UpdateVersion.Parse(FileVersionInfo.GetVersionInfo(path).FileVersion));
+    private readonly Func<string,string,CancellationToken,Task> inspectSetup = inspectSetup ?? InspectSetupAsync;
+    private static async Task InspectSetupAsync(string path,string edition,CancellationToken token)
+    {
+        var start=new ProcessStartInfo(path){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden};
+        foreach(string arg in new[]{"--inspect","--expect-edition",edition,"--silent"})start.ArgumentList.Add(arg);
+        using var process=Process.Start(start)??throw new IOException("Setup inspection could not start.");
+        try { await process.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(30),token); }
+        catch { if(!process.HasExited)process.Kill();throw; }
+        if(process.ExitCode!=0)throw new InvalidDataException("Setup edition, protocol or embedded payload inspection failed.");
+    }
     public async Task<DownloadedUpdate> DownloadAsync(UpdateRelease release, IProgress<long>? progress, CancellationToken token)
     {
         var asset = release.Asset ?? throw new InvalidOperationException("No verified download is available.");
@@ -220,7 +232,8 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
         string directory = Path.Combine(staging, Guid.NewGuid().ToString("N"));
         UpdateFiles.EnsureDirectory(directory);
         var lease = new FileStream(Path.Combine(directory, "lease"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        string partial = Path.Combine(directory, "payload.part"), executable = Path.Combine(directory, Program.Product + ".exe");
+        if(asset.Name is not ("RobloxLaunchHelper.exe" or "RobloxMultiInstance-Setup.exe" or "RobloxLaunchHelper-Setup.exe"))throw new InvalidDataException("Unsupported setup asset.");
+        string partial = Path.Combine(directory, "payload.part"), executable = Path.Combine(directory, asset.Name);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -231,8 +244,9 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
             await using (var input = await response.Content.ReadAsStreamAsync(timeout.Token))
             await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true))
                 if (await UpdateFiles.CopyBoundedAsync(input, output, asset.Size, progress, timeout.Token) != asset.Size) throw new InvalidDataException("Incomplete download.");
-            await VerifyAsync(partial, release, timeout.Token);
+            await VerifyFileAsync(partial, release, timeout.Token,inspect:false);
             File.Move(partial, executable);
+            await VerifyAsync(executable,release,timeout.Token);
             return new(executable, lease);
         }
         catch
@@ -258,7 +272,8 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
         }
         throw new InvalidDataException("Too many download redirects.");
     }
-    public async Task VerifyAsync(string path, UpdateRelease release, CancellationToken token)
+    public Task VerifyAsync(string path, UpdateRelease release, CancellationToken token)=>VerifyFileAsync(path,release,token,inspect:true);
+    private async Task VerifyFileAsync(string path,UpdateRelease release,CancellationToken token,bool inspect)
     {
         var asset = release.Asset ?? throw new InvalidDataException();
         UpdateFiles.RejectLinks(path);
@@ -266,5 +281,7 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
         if (file.Length != asset.Size || !Convert.ToHexString(await SHA256.HashDataAsync(file, token)).Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Download verification failed. Download the update again.");
         if (fileVersion(path) != release.Version) throw new InvalidDataException("The downloaded executable version does not match this release.");
+        string? edition=asset.Name switch {"RobloxMultiInstance-Setup.exe"=>"Desktop","RobloxLaunchHelper-Setup.exe"=>"Helper",_=>null};
+        if(inspect&&edition is not null)await inspectSetup(path,edition,token);
     }
 }

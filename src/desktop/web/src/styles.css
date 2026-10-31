@@ -44,3 +44,5 @@ html,body,#root{height:100%;overflow:hidden}.shell{height:100%;min-height:0}.sid
 .activity-detail-row>td:first-child{padding:0}
 
 .placement-order{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:65px}
+
+.dot.warning{background:#d99732}
