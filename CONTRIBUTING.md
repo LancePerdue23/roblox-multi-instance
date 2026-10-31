@@ -7,6 +7,8 @@ Use Windows x64 and the .NET 10 SDK. The SDK selection is defined in `global.jso
 ./Build.ps1
 ```
 
+For daily development, run `./Dev.ps1` (or pass `-Dotnet ./.build/sdk/dotnet.exe` for the local SDK). It replaces `.build/dev/RobloxLaunchHelper.exe` after a successful build and retains the previous four versions in `.build/dev-backups`. Close that development app, including its tray process, before rebuilding. `Build.ps1` still produces the release output by default.
+
 The default tests need no Roblox installation and do not launch Roblox or close its handles. They create and remove a uniquely named temporary test registry subtree. Build output and test reports remain ignored by Git.
 
 For full integration coverage, run this command from an elevated PowerShell session with official Roblox installed:
@@ -18,6 +20,8 @@ For full integration coverage, run this command from an elevated PowerShell sess
 Integration tests validate the installed Roblox signature and close a specifically named event in a controlled child process. Real browser/account behavior needs a manual check with two separate accounts; a process count alone is insufficient. Confirm both game windows remain open and the helper exits.
 
 Keep changes focused. Preserve the existing executable name, task names, and installation paths unless an explicit migration is included. These names belong to installed users, independently of the repository name.
+
+For the opt-in persona/workflow audit, see [the user simulation guide](docs/user-simulation.md). Its synthetic mode runs separately from regression tests; the live mode requires explicit authorization to launch and close test clients.
 
 An optional Windows GitHub Actions workflow is provided at `docs/windows-build.yml.example`. To enable it, copy it to `.github/workflows/build.yml` using a GitHub credential permitted to manage workflows. It runs the default tests and publishes a local build on the runner; it does not install the helper or publish a release.
 

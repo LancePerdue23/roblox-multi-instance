@@ -204,8 +204,8 @@ internal static class UpdateTests
         run("Update card renders release notes and serializes explicit downloads without executing setup", () =>
         {
             using var fake = new FakeDownloader(); var handoff = new FakeHandoff();
-            using var form = new UpdateForm(true, fake, handoff);
-            form.Present(Release(), Current); form.Show(); Application.DoEvents();
+            using var content = new UpdatesPage(new(new PageReleaseSource(),new PageVersionSource(),fake,handoff));
+            using var form = new PageHost<UpdatesPage>(content); form.Show(); WorkspaceTests.Pump(content.CheckAsync()); Application.DoEvents();
             var primary = Descendants(form).OfType<Button>().Single(b => b.Text == "Download update");
             Check(primary.Enabled && Descendants(form).OfType<Label>().Any(l => l.Text.Contains("1.1.0")));
             string preview = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.build/update-card.png"));
@@ -213,18 +213,19 @@ internal static class UpdateTests
             using (var bitmap = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(bitmap, form.ClientRectangle); bitmap.Save(preview); }
             form.Scale(new SizeF(1.5f, 1.5f)); Application.DoEvents();
             using (var bitmap = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(bitmap, form.ClientRectangle); bitmap.Save(Path.Combine(Path.GetDirectoryName(preview)!, "update-card-150.png")); }
-            primary.PerformClick(); primary.PerformClick(); Application.DoEvents();
-            Check(fake.Calls == 1 && form.Busy && handoff.Calls == 0);
-            Descendants(form).OfType<Button>().Single(b => b.Text == "Cancel").PerformClick();
-            var deadline = Stopwatch.StartNew();
-            while (form.Busy && deadline.Elapsed < TimeSpan.FromSeconds(3)) { Application.DoEvents(); Thread.Sleep(5); }
-            Check(!form.Busy && handoff.Calls == 0); form.Close(); Application.DoEvents();
+            WorkspaceTests.Button(form,"Download update").PerformClick(); WorkspaceTests.Button(form,"Download update").PerformClick(); Application.DoEvents();
+            Check(fake.Calls == 1 && content.Busy && handoff.Calls == 0);
+            WorkspaceTests.Button(form,"Cancel download").PerformClick();
+            UserSimulation.Wait(()=>!content.Busy);
+            Check(!content.Busy && handoff.Calls == 0); form.Close(); Application.DoEvents();
         });
     }
     private static IEnumerable<Control> Descendants(Control root)
     {
         foreach (Control child in root.Controls) { yield return child; foreach (var nested in Descendants(child)) yield return nested; }
     }
+    private sealed class PageReleaseSource : IReleaseSource { public Task<UpdateRelease?> LatestAsync(CancellationToken token)=>Task.FromResult<UpdateRelease?>(Release()); }
+    private sealed class PageVersionSource : IUpdateVersionProvider { public Version? Current()=>UpdateTests.Current; }
     private sealed class FakeDownloader : IUpdateDownloader, IDisposable
     {
         internal int Calls;

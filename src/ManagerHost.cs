@@ -58,13 +58,16 @@ internal sealed class ManagerHost : ApplicationContext
 {
     internal readonly LayoutPreferences Preferences;
     private DiagnosticsForm? diagnostics;
+    private readonly WorkspaceNavigationPipe navigationPipe;
+    private readonly MessageDispatcher navigationDispatcher = new();
     private readonly HotkeyWindow hotkeyWindow = new();
     private readonly HotkeyRegistrations registrations;
     private NotifyIcon? tray;
     private Mutex? trayMutex;
-    private bool globalEnabled, handling, exiting;
+    private bool globalEnabled, handling, exiting, disposedResources;
     private Task draining = Task.CompletedTask;
     private readonly bool collectOnShown;
+    private readonly bool ownsMessageLoop;
     private readonly string trayMutexName;
     private readonly UpdateShutdownRequest updateShutdown;
     private readonly BackgroundClientMonitor? backgroundCleanup;
@@ -74,9 +77,10 @@ internal sealed class ManagerHost : ApplicationContext
         get { using var process = Process.GetCurrentProcess(); return @"Local\RobloxLaunchHelper-WindowShortcuts-" + Program.Sid + "-" + process.SessionId; }
     }
     internal ManagerHost(bool collectOnShown = true, IHotkeyPlatform? hotkeys = null, LayoutPreferences? preferences = null,
-        string? mutexName = null, bool enableBackgroundCleanup = true)
+        string? mutexName = null, bool enableBackgroundCleanup = true, WorkspaceTarget? initialTarget = null, bool ownsMessageLoop = true)
     {
         trayMutexName = mutexName ?? TrayMutexName;
+        this.ownsMessageLoop = ownsMessageLoop;
         this.collectOnShown = collectOnShown; Preferences = preferences ?? new LayoutPreferences();
         registrations = new(hotkeys ?? hotkeyWindow);
         hotkeyWindow.Pressed += async id =>
@@ -107,7 +111,31 @@ internal sealed class ManagerHost : ApplicationContext
                 @"Local\RobloxLaunchHelper-BackgroundCleanup-" + sid + "-" + session);
         }
         ShowDiagnostics();
+        if (initialTarget is WorkspaceTarget target) _ = diagnostics!.NavigateAsync(target);
+        _ = navigationDispatcher.Handle;
+        navigationPipe = new WorkspaceNavigationPipe(passive =>
+        {
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (exiting || navigationDispatcher.IsDisposed) return Task.FromException(new IOException());
+            try
+            {
+                navigationDispatcher.BeginInvoke(async () =>
+                {
+                    try
+                    {
+                        if (exiting || (passive && diagnostics is null)) throw new IOException();
+                        if (!passive) { await OpenAsync(); await diagnostics!.NavigateAsync(new(WorkspaceSection.System,SystemSection.Updates)); }
+                        if (diagnostics is not null) { if(passive) diagnostics.Updates.NotifyAvailable(); else _ = diagnostics.Updates.CheckAsync(); }
+                        completion.TrySetResult();
+                    }
+                    catch (Exception error) { completion.TrySetException(error); }
+                });
+            }
+            catch (InvalidOperationException error) { completion.TrySetException(error); }
+            return completion.Task;
+        });
     }
+    private void FinishMessageLoop() { if (ownsMessageLoop) ExitThread(); }
     private void ShowDiagnostics()
     {
         diagnostics = new DiagnosticsForm(collectOnShown, this);
@@ -120,7 +148,7 @@ internal sealed class ManagerHost : ApplicationContext
             if (tray is null && diagnostics is null)
             {
                 if (backgroundCleanup is not null) await backgroundCleanup.StopAsync();
-                ExitThread();
+                FinishMessageLoop();
             }
         };
         current.Show();
@@ -155,7 +183,7 @@ internal sealed class ManagerHost : ApplicationContext
             {
                 await draining;
                 if (backgroundCleanup is not null) await backgroundCleanup.StopAsync();
-                ExitThread();
+                FinishMessageLoop();
             }
         });
         menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
@@ -169,11 +197,10 @@ internal sealed class ManagerHost : ApplicationContext
         if (errors.Length > 0) tray?.ShowBalloonTip(5000, "Shortcut conflicts", string.Join("\n", errors), ToolTipIcon.Warning);
         if (!Preferences.Available && tray is not null) tray.ShowBalloonTip(5000, "Window shortcuts", "Saved settings are unavailable. Reset them in Arrange to enable global shortcuts.", ToolTipIcon.Warning);
     }
-    internal void ConfigureShortcuts()
+    internal async void ConfigureShortcuts()
     {
-        if (Application.OpenForms.Cast<Form>().Any(f => f.Modal)) return;
-        using var form = new ShortcutSettingsForm(Preferences);
-        form.ShowDialog(Application.OpenForms.Cast<Form>().LastOrDefault());
+        await OpenAsync();
+        if (diagnostics is not null) await diagnostics.NavigateAsync(new(WorkspaceSection.Settings, Settings: SettingsSection.Shortcuts));
     }
     internal void StopTray()
     {
@@ -184,6 +211,11 @@ internal sealed class ManagerHost : ApplicationContext
     private async Task ExitAsync()
     {
         if (exiting) return;
+        if (diagnostics is { CanCloseWorkspace: false })
+        {
+            diagnostics.Close(); // The shell explains why the active layout must finish first.
+            return;
+        }
         if (Application.OpenForms.Cast<Form>().Any(f => f.Modal))
         { tray?.ShowBalloonTip(3000, "Window shortcuts", "Close the open dialog before exiting.", ToolTipIcon.Info); return; }
         exiting = true; StopTray();
@@ -192,21 +224,21 @@ internal sealed class ManagerHost : ApplicationContext
         if (current is not null) await current.InstanceCompletion;
         await draining;
         if (backgroundCleanup is not null) await backgroundCleanup.StopAsync();
-        ExitThread();
+        FinishMessageLoop();
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { backgroundCleanup?.Dispose(); updateShutdown.Dispose(); Preferences.Changed -= UpdateKeys; StopTray(); registrations.Dispose(); hotkeyWindow.Dispose(); diagnostics?.Dispose(); }
+        if (disposing && !disposedResources) { disposedResources=true; navigationPipe.Dispose(); navigationDispatcher.Dispose(); backgroundCleanup?.Dispose(); updateShutdown.Dispose(); Preferences.Changed -= UpdateKeys; StopTray(); registrations.Dispose(); hotkeyWindow.Dispose(); diagnostics?.Dispose(); }
         base.Dispose(disposing);
     }
 }
 
-internal sealed class ShortcutSettingsForm : Form
+internal sealed class ShortcutSettingsPage : WorkspacePage
 {
-    internal ShortcutSettingsForm(LayoutPreferences preferences)
+    internal ShortcutSettingsPage(LayoutPreferences preferences)
     {
-        Text = "Global shortcut settings"; ClientSize = new(550, 350); StartPosition = FormStartPosition.CenterParent;
-        AutoScaleMode = AutoScaleMode.Dpi; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
+        Text = "Global shortcut settings"; AutoScroll = true; MinimumSize = new(0, 350);
+        AutoScaleMode = AutoScaleMode.Dpi;
         var root = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new(12) };
         root.Controls.Add(new Label { AutoSize = true, Text = "Click a binding and press a modified letter, digit, or F1–F11.\nGlobal keys work only in explicitly enabled tray mode." });
         var bindings = new Dictionary<string, Keys>();
@@ -214,7 +246,7 @@ internal sealed class ShortcutSettingsForm : Form
         {
             bindings[command] = (Keys)value;
             var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
-            row.Controls.Add(new Label { Text = ShortcutPolicy.Label(command), Width = 130, Padding = new(0, 5, 0, 0) });
+            row.Controls.Add(new Label { Text = ShortcutPolicy.Label(command), Width = 190, Padding = new(0, 5, 0, 0) });
             var box = new TextBox { ReadOnly = true, Width = 300, Text = new KeysConverter().ConvertToString((Keys)value), AccessibleName = ShortcutPolicy.Label(command) + " global binding" };
             box.KeyDown += (_, e) =>
             {
@@ -223,17 +255,34 @@ internal sealed class ShortcutSettingsForm : Form
             };
             row.Controls.Add(box); root.Controls.Add(row);
         }
-        var status = new Label { AutoSize = true, MaximumSize = new(500, 0) };
-        var save = new Button { Text = "Save", AutoSize = true, Enabled = preferences.Available };
+        var status = new Label { AutoSize = true, MaximumSize = new(500, 0), Text = preferences.Available ? "" : "Saved layout/shortcut settings are unavailable. Reset them to enable changes." };
+        var save = new WorkspaceButton { Text = "Save", AutoSize = true, Enabled = preferences.Available };
         save.Click += (_, _) =>
         {
             try
             {
                 preferences.Save(preferences.Settings with { Shortcuts = bindings.ToDictionary(p => p.Key, p => (int)p.Value) });
-                DialogResult = DialogResult.OK;
+                status.Text = "Shortcut preferences saved.";
             }
             catch { status.Text = "Bindings must be unique and valid. Settings storage must be available."; }
         };
-        root.Controls.Add(save); root.Controls.Add(status); Controls.Add(root);
+        root.Controls.Add(save); root.Controls.Add(status);
+        root.Controls.Add(WorkspaceControls.Button("Reset layout & shortcut settings…",async ()=>
+        {
+            if(!await WorkspacePrompt.ConfirmAsync(this,"Delete saved presets and restore default shortcut bindings?","Reset layout and shortcuts")) return;
+            try
+            {
+                preferences.Reset(); bindings.Clear();
+                foreach(var pair in preferences.Settings.Shortcuts) bindings[pair.Key]=(Keys)pair.Value;
+                foreach(var box in WorkspaceControls.Descendants(root).OfType<TextBox>())
+                {
+                    var command=bindings.Keys.SingleOrDefault(key=>box.AccessibleName==ShortcutPolicy.Label(key)+" global binding");
+                    if(command is not null) box.Text=new KeysConverter().ConvertToString(bindings[command]);
+                }
+                save.Enabled=true; status.Text="Layout and shortcut settings reset.";
+            }
+            catch { status.Text="Settings could not be reset. Check folder access."; }
+        }));
+        Controls.Add(root);
     }
 }

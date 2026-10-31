@@ -75,6 +75,7 @@ internal sealed class BackgroundCleanupTracker
 internal sealed class BackgroundClientMonitor : IDisposable
 {
     private readonly CancellationTokenSource stopped = new();
+    private int disposed;
     internal Task Completion { get; }
     internal BackgroundClientMonitor(IInstanceCollector collector, BackgroundClientCleanup cleanup, string mutexName)
     {
@@ -112,9 +113,10 @@ internal sealed class BackgroundClientMonitor : IDisposable
             catch { /* Cleanup being unavailable never blocks app or game startup. */ }
         }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
-    internal Task StopAsync() { stopped.Cancel(); return Completion; }
+    internal Task StopAsync() { try { stopped.Cancel(); } catch(ObjectDisposedException) { } return Completion; }
     public void Dispose()
     {
+        if(Interlocked.Exchange(ref disposed,1)!=0)return;
         stopped.Cancel();
         _ = Completion.ContinueWith(_ => stopped.Dispose(), TaskScheduler.Default);
     }

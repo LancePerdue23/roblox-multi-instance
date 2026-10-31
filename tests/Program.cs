@@ -14,6 +14,12 @@ internal static class Tests
     private static int Main(string[] args)
     {
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        Application.EnableVisualStyles();
+        if (args.FirstOrDefault() == "--user-simulation") return UserSimulation.Run(args.Skip(1).ToArray());
+        if (args.FirstOrDefault() == "--live-user-simulation") return LiveUserSimulation.Run(args.Skip(1).ToArray());
+        if (args.FirstOrDefault() == "--workspace-tests") { WorkspaceTests.Run(Run); return failed == 0 ? 0 : 1; }
+        if (args.FirstOrDefault() == "--workspace-preview") { WorkspaceTests.RenderAll(true); return 0; }
+        if (args.FirstOrDefault() == "--workspace-render") { WorkspaceTests.RenderAll(); return 0; }
         if (args.FirstOrDefault() == "--fixture") return Fixture.Run();
         if (args.FirstOrDefault() == "--inspect-roblox" && args.Length == 2) return Inspect(args[1]);
         bool integration = false;
@@ -24,6 +30,7 @@ internal static class Tests
             else if (args[i] == "--report" && i + 1 < args.Length) requestedReport = args[++i];
             else { Console.Error.WriteLine("Usage: tests [--integration] [--report path]"); return 2; }
         }
+        WorkspaceTests.Run(Run);
         Run("Exact event name and type matching", () =>
         {
             Check(Native.IsTargetEvent("Event", @"\Sessions\1\BaseNamedObjects\ROBLOX_singletonEvent"));
@@ -140,6 +147,7 @@ internal static class Tests
         WindowLayoutsTests.Run(Run);
         UpdateTests.Run(Run);
         RecoveryTests.Run(Run);
+
         string report = requestedReport ?? Path.Combine(AppContext.BaseDirectory, "test-results.json");
         File.WriteAllText(report, JsonSerializer.Serialize(new { time = DateTimeOffset.Now, integration, elevated = RobloxLaunchHelper.Program.Elevated, failures = failed, tests = Results }, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"{Results.Count - failed}/{Results.Count} tests passed. Report: {report}");
@@ -213,8 +221,11 @@ internal static class Tests
 
     private static void Run(string name, Action action)
     {
+        var previousContext=SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
         try { action(); Results.Add(new { name, passed = true }); Console.WriteLine("PASS " + name); }
         catch (Exception e) { failed++; Results.Add(new { name, passed = false, error = e.ToString() }); Console.WriteLine("FAIL " + name + ": " + e.Message); }
+        finally { SynchronizationContext.SetSynchronizationContext(previousContext); }
     }
     private static void Check(bool condition, string message = "Assertion failed") { if (!condition) throw new Exception(message); }
     private static void Throws<T>(Action action) where T : Exception

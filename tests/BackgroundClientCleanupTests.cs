@@ -42,6 +42,7 @@ internal static class BackgroundClientCleanupTests
                 Check(observed.Wait(TimeSpan.FromSeconds(5)));
                 Check(monitor.StopAsync().Wait(TimeSpan.FromSeconds(5)));
                 Check(process.Stops == 0);
+                monitor.Dispose(); monitor.Dispose(); Check(monitor.StopAsync().IsCompleted);
             }
             finally { monitor.Dispose(); }
         });

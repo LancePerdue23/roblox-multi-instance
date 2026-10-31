@@ -2,11 +2,11 @@ using System.Diagnostics;
 
 namespace RobloxLaunchHelper;
 
-internal sealed class DiagnosticsForm : Form
+internal sealed partial class DiagnosticsForm : Form, IWorkspaceNavigation
 {
     private readonly Label status = new() { AutoSize = true, MaximumSize = new Size(1100, 0), Text = "Loading configuration checks…" };
     private readonly ListView checks = new() { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill, AccessibleName = "Health checks" };
-    private readonly ListView launches = new() { View = View.Details, FullRowSelect = true, Dock = DockStyle.Fill, AccessibleName = "Recent launch results" };
+    private readonly ListView launches = new WorkspaceListView() { View = View.Details, FullRowSelect = true, MultiSelect = false, HideSelection = false, Dock = DockStyle.Fill, AccessibleName = "Recent launch results" };
     private readonly TextBox detail = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical, AccessibleName = "Selected diagnostic details" };
     private readonly FlowLayoutPanel buttons = new() { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
     private readonly CancellationTokenSource closed = new();
@@ -15,42 +15,37 @@ internal sealed class DiagnosticsForm : Form
     private readonly Button launchRoblox;
     private readonly Func<ProcessStartInfo, CancellationToken, Task> launchProcess;
     private readonly Action<string> launchError;
-    private ActiveInstancesForm? activeInstances;
+    private readonly Func<bool, CancellationToken, Task> setBrowserIntegration;
+    private ActiveInstancesPage? activeInstances;
     private readonly ManagerHost? managerHost;
     private HealthSnapshot? snapshot;
     private LaunchResult[] recent = [];
     private bool historyAvailable;
     private HealthCheckResult worker = DiagnosticChecks.NotTested;
     internal DiagnosticsForm(bool collectOnShown = true, ManagerHost? managerHost = null,
-        Func<ProcessStartInfo, CancellationToken, Task>? launchProcess = null, Action<string>? launchError = null)
+        Func<ProcessStartInfo, CancellationToken, Task>? launchProcess = null, Action<string>? launchError = null, AppearancePreferences? appearance = null,
+        IInstancePlatform? instancePlatform = null, IPlacementPlatform? placementPlatform = null,
+        Func<CancellationToken, InstanceSnapshot>? discoverWindows = null, LayoutPreferences? layouts = null,
+        NotificationPreferences? notifications = null, UpdateServices? updateServices = null,
+        Func<bool, CancellationToken, Task>? setBrowserIntegration = null)
     {
+        this.appearance = appearance ?? new AppearancePreferences();
+        this.instancePlatform = instancePlatform; this.placementPlatform = placementPlatform; this.discoverWindows = discoverWindows;
+        injectedLayouts = layouts; injectedNotifications = notifications; injectedUpdates = updateServices; testMode = !collectOnShown;
         this.managerHost = managerHost;
+        this.setBrowserIntegration = setBrowserIntegration ?? BrowserIntegration.SetAsync;
         this.launchProcess = launchProcess ?? RunLaunchChildAsync;
-        this.launchError = launchError ?? (message => MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning));
-        Text = "Roblox Multi Instance — Diagnostics"; Size = new(1100, 760); MinimumSize = new(740, 560);
-        AutoScaleMode = AutoScaleMode.Dpi; StartPosition = FormStartPosition.CenterScreen;
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(12) };
-        layout.RowStyles.Add(new(SizeType.AutoSize)); layout.RowStyles.Add(new(SizeType.Percent, 45));
-        layout.RowStyles.Add(new(SizeType.AutoSize)); layout.RowStyles.Add(new(SizeType.Percent, 35));
-        layout.RowStyles.Add(new(SizeType.Percent, 20)); layout.RowStyles.Add(new(SizeType.AutoSize));
-        checks.Columns.Add("Check", 165); checks.Columns.Add("Status", 90); checks.Columns.Add("Message / next step", 760);
-        launches.Columns.Add("Started (local)", 165); launches.Columns.Add("Source", 95); launches.Columns.Add("Result", 100); launches.Columns.Add("Message", 650);
-        layout.Controls.Add(status, 0, 0); layout.Controls.Add(checks, 0, 1);
-        layout.Controls.Add(new Label { Text = "Recent launches — up to 100 attempts / 30 days. Select a row for details; Check again reloads results.", AutoSize = true }, 0, 2);
-        layout.Controls.Add(launches, 0, 3); layout.Controls.Add(detail, 0, 4); layout.Controls.Add(buttons, 0, 5); Controls.Add(layout);
-        launchRoblox = new Button { Text = "&Launch Roblox", AutoSize = true, Margin = new Padding(4), AccessibleName = "Launch Roblox" };
+        this.launchError = launchError ?? (message => workspaceStatus.Text = message);
+        launchRoblox = new WorkspaceButton { Text = "&Launch Roblox", AutoSize = true, Margin = new Padding(4), AccessibleName = "Launch Roblox" };
         launchRoblox.Click += async (_, _) => await LaunchRobloxAsync();
-        buttons.Controls.Add(launchRoblox);
+
         AddButton("&Check again", RefreshAsync); AddButton("&Test worker", TestAsync); AddButton("&Recover/Repair", () => InstallerAsync("--recover"));
-        integration = AddButton("Disable browser integration", () => InstallerAsync(snapshot?.BrowserIntegrationEnabled == false ? "--enable-browser-integration" : "--disable-browser-integration"));
+        integration = AddButton("Disable browser integration", ToggleIntegrationAsync);
         integration.Enabled = false;
-        AddButton("&Setup", () => InstallerAsync("--setup")); AddButton("&Export report", ExportAsync); AddButton("&Clear history", ClearAsync);
-        AddButton("&Active instances", () => OpenInstancesAsync());
-        AddButton("Launch notifications…", () => { using var form = new NotificationSettingsForm(); form.ShowDialog(this); return Task.CompletedTask; });
-        AddButton("Updates…", () => { UpdateHost.OpenManual(); return Task.CompletedTask; });
-        AddButton("User &logs", () => OpenLogsAsync(0)); AddButton("&Worker logs", () => OpenLogsAsync(1)); AddButton("Setup l&ogs", () => OpenLogsAsync(2));
-        checks.SelectedIndexChanged += (_, _) => { if (checks.SelectedItems.Count > 0) detail.Text = checks.SelectedItems[0].Tag as string ?? ""; };
-        launches.SelectedIndexChanged += (_, _) => { if (launches.SelectedItems.Count > 0) detail.Text = launches.SelectedItems[0].Tag as string ?? ""; };
+        AddButton("&Setup", () => InstallerAsync("--setup")); AddButton("&Export report…", ExportAsync); AddButton("&Clear history…", ClearAsync);
+        AddButton("User logs", () => OpenLogsAsync(0)); AddButton("Worker logs", () => OpenLogsAsync(1)); AddButton("Setup logs", () => OpenLogsAsync(2));
+        launches.SelectedIndexChanged += (_, _) => ShowActivityDetails();
+        BuildWorkspace(collectOnShown);
         if (collectOnShown) Shown += async (_, _) => await RunAsync(RefreshAsync);
         FormClosed += (_, _) => closed.Cancel();
     }
@@ -82,32 +77,29 @@ internal sealed class DiagnosticsForm : Form
         }
         finally { if (!IsDisposed && !closed.IsCancellationRequested) launchRoblox.Enabled = true; }
     }
-    internal async Task OpenInstancesAsync(ArrangementKind? command = null)
+    internal Task OpenInstancesAsync(ArrangementKind? command = null) => command is ArrangementKind kind
+        ? OpenLayoutAsync(kind) : NavigateAsync(new(WorkspaceSection.Instances));    private Button AddButton(string text, Func<Task> action)
     {
-        if (activeInstances is { IsDisposed: true }) await activeInstances.Completion;
-        if (IsDisposed) return;
-        if (activeInstances is null || activeInstances.IsDisposed)
-            activeInstances = new ActiveInstancesForm(preferences: managerHost?.Preferences,
-                enableTray: managerHost is null ? null : managerHost.EnableTray,
-                configureShortcuts: managerHost is null ? null : managerHost.ConfigureShortcuts);
-        if (!activeInstances.Visible) activeInstances.Show(this);
-        if (activeInstances.WindowState == FormWindowState.Minimized) activeInstances.WindowState = FormWindowState.Normal;
-        activeInstances.Activate();
-        if (command is ArrangementKind layout) await activeInstances.OpenArrangementAsync(layout);
-    }
-    private Button AddButton(string text, Func<Task> action)
-    {
-        var button = new Button { Text = text, AutoSize = true, Margin = new Padding(4) };
+        var button = new WorkspaceButton { Text = text, AutoSize = true, Margin = new Padding(4) };
         button.Click += async (_, _) => await RunAsync(action); buttons.Controls.Add(button);
         return button;
     }
     private async Task RunAsync(Func<Task> action)
     {
+        if (IsDisposed || !buttons.Enabled) return;
         buttons.Enabled = false;
+        activeInstances?.SetIntegration(snapshot?.BrowserIntegrationEnabled, changing: true);
         try { await action(); }
         catch (OperationCanceledException) { }
-        catch (Exception e) { if (!IsDisposed) MessageBox.Show(this, $"The diagnostic action could not finish (0x{e.HResult:X8}). Launch behavior is unaffected.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-        finally { if (!IsDisposed) buttons.Enabled = true; }
+        catch (Exception e) { if (!IsDisposed) workspaceStatus.Text = $"The action could not finish (0x{e.HResult:X8}). Try again or check the logs."; }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                buttons.Enabled = true;
+                activeInstances?.SetIntegration(snapshot?.BrowserIntegrationEnabled);
+            }
+        }
     }
     private async Task RefreshAsync()
     {
@@ -140,21 +132,40 @@ internal sealed class DiagnosticsForm : Form
             row.Tag = $"{check.Id}: {check.State}\r\n{message}\r\nObserved: {check.ObservedUtc.LocalDateTime:g}\r\nAction: {check.Action}\r\nError code: {check.ErrorCode}";
             checks.Items.Add(row);
         }
-        launches.Items.Clear();
-        foreach (var launch in recent)
-        {
-            string message = LaunchStatusText.Text(launch.Outcome, launch.Code, launch.RobloxStarted);
-            var row = new ListViewItem([launch.StartedUtc.LocalDateTime.ToString("g"), launch.Source.ToString(), launch.Outcome.ToString(), message]);
-            row.Tag = $"{message}\r\nStarted: {launch.StartedUtc:O}\r\nEnded: {launch.EndedUtc:O}\r\nElapsed ms: {launch.DurationMs}\r\nRoblox started: {launch.RobloxStarted?.ToString() ?? "Unknown"}\r\nError code: {launch.ErrorCode}";
-            launches.Items.Add(row);
-        }
-        detail.Text = recent.Length == 0 ? historyAvailable ? "No recent launch results. History starts with this version; existing logs are not reconstructed as launch outcomes." : DiagnosticMessages.Text(DiagnosticCode.HistoryUnavailable) : "Select a health check or launch result for details.";
+        RenderActivity();
+        integrationStatus.Text = "Browser integration   " + (health.BrowserIntegrationEnabled is true ? "Enabled" : health.BrowserIntegrationEnabled is false ? "Disabled" : "Unknown");
+        systemStatus.Text = health.Overall == CheckState.Healthy ? "● System ready" : "● " + health.Overall;
+        activeInstances?.SetIntegration(health.BrowserIntegrationEnabled, changing: !buttons.Enabled);
     }
     private async Task TestAsync()
     {
         status.Text = "Testing authenticated worker startup; Roblox will not be launched…";
         worker = await DiagnosticChecks.TestWorkerAsync(closed.Token);
         if (!IsDisposed) await CollectAsync();
+    }
+    private async Task ToggleIntegrationAsync()
+    {
+        if (snapshot?.BrowserIntegrationEnabled is not bool enabled) return;
+        workspaceStatus.Text = enabled ? "Disabling browser integration…" : "Enabling browser integration…";
+        try
+        {
+            await setBrowserIntegration(!enabled, closed.Token);
+            if (!IsDisposed && !closed.IsCancellationRequested)
+            {
+                await RefreshAsync();
+                workspaceStatus.Text = snapshot?.BrowserIntegrationEnabled == !enabled
+                    ? "Browser integration " + (!enabled ? "enabled." : "disabled.")
+                    : "The change could not be confirmed. Check System → Health and try again.";
+            }
+        }
+        catch (OperationCanceledException) when (closed.IsCancellationRequested) { }
+        catch (Exception e)
+        {
+            if (IsDisposed || closed.IsCancellationRequested) return;
+            // A disconnected client may have missed a completed transaction. Read the saved state again.
+            try { await RefreshAsync(); } catch { }
+            workspaceStatus.Text = e is UserError ? e.Message : "Browser integration could not be changed. Check System → Health and try again.";
+        }
     }
     private async Task InstallerAsync(string mode)
     {
@@ -164,16 +175,16 @@ internal sealed class DiagnosticsForm : Form
         using var process = Process.Start(start) ?? throw new IOException();
         await process.WaitForExitAsync(closed.Token);
         bool canceled = process.ExitCode == 1223;
-        if (!canceled && process.ExitCode != 0) MessageBox.Show(this, "The installation action did not complete. Check setup logs and run Check again.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        if (!canceled && process.ExitCode != 0) workspaceStatus.Text = "The installation action did not complete. Check setup logs and run Check again.";
         await RefreshAsync();
-        if (!IsDisposed && canceled) detail.Text = "Administrator approval was canceled. No repair failure was recorded.";
+        if (!IsDisposed && canceled) workspaceStatus.Text = "Administrator approval was canceled. No repair failure was recorded.";
     }
     private Task OpenLogsAsync(int index)
     {
         string path = DiagnosticReports.LogDirectories[index];
-        if (!Directory.Exists(path)) MessageBox.Show(this, "This log folder does not exist yet. Some logs are created only after setup or a launch.", Text);
+        if (!Directory.Exists(path)) workspaceStatus.Text = "This log folder does not exist yet. Some logs are created only after setup or a launch.";
         else { try { Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, ArgumentList = { path } })?.Dispose(); }
-            catch { MessageBox.Show(this, "This log folder could not be opened with your current permissions.", Text); } }
+            catch { workspaceStatus.Text = "This log folder could not be opened with your current permissions."; } }
         return Task.CompletedTask;
     }
     private async Task ExportAsync()
@@ -181,16 +192,16 @@ internal sealed class DiagnosticsForm : Form
         if (snapshot is null) return;
         var package = await Task.Run(() => DiagnosticReports.Build(snapshot, recent, historyAvailable)).WaitAsync(TimeSpan.FromSeconds(35), closed.Token);
         if (IsDisposed) return;
-        if (MessageBox.Show(this, $"Export configuration checks, versions, UTC timestamps/durations, {package.LaunchCount} launch results and {package.EventCount} sanitized log events?\n\nNo identities, paths, launch links, commands or raw logs are included. Timestamps and launch activity may still be sensitive. Nothing is uploaded. Review the report before sharing.", Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK) return;
+        if (!await WorkspacePrompt.ConfirmAsync(this, $"Export configuration checks, versions, UTC timestamps/durations, {package.LaunchCount} launch results and {package.EventCount} sanitized log events?\n\nNo identities, paths, launch links, commands or raw logs are included. Timestamps and launch activity may still be sensitive. Nothing is uploaded. Review the report before sharing.", "Export report")) return;
         using var dialog = new SaveFileDialog { Filter = "Troubleshooting ZIP (*.zip)|*.zip", FileName = "RobloxMultiInstance-report.zip", DefaultExt = "zip", AddExtension = true, OverwritePrompt = true };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         await Task.Run(() => DiagnosticReports.Write(dialog.FileName, package));
-        if (!IsDisposed) detail.Text = "Redacted troubleshooting report saved locally. Review it before sharing. No data was uploaded.";
+        if (!IsDisposed) workspaceStatus.Text = "Redacted troubleshooting report saved locally. Review it before sharing. No data was uploaded.";
     }
     private async Task ClearAsync()
     {
-        if (MessageBox.Show(this, "Clear structured recent-launch history? Existing text logs and exported reports remain. Concurrent launches may create new records.", Text, MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
-        if (!await Task.Run(history.Clear)) MessageBox.Show(this, "History could not be cleared. Check access and try again.", Text);
-        await RefreshAsync();
+        if (!await WorkspacePrompt.ConfirmAsync(this, "Clear structured recent-launch history? Existing text logs and exported reports remain. Concurrent launches may create new records.", "Clear history")) return;
+        if (!await Task.Run(history.Clear)) workspaceStatus.Text = "History could not be cleared. Check access and try again.";
+        await RefreshActivityAsync();
     }
 }

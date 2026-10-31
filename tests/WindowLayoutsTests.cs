@@ -159,7 +159,7 @@ internal static class WindowLayoutsTests
             var keys = new FakeKeys();
             string mutexName = @"Local\RobloxLaunchHelper-TestTray-" + Guid.NewGuid().ToString("N");
             using var host = new ManagerHost(false, keys, new LayoutPreferences(new LayoutStore(Path.Combine(AppContext.BaseDirectory, "nonexistent-layout-fixture.json"))), mutexName,
-                enableBackgroundCleanup: false);
+                enableBackgroundCleanup: false, ownsMessageLoop: false);
             Check(!host.TrayActive && keys.Active.Count == 0);
             host.EnableTray(); Check(host.TrayActive && keys.Active.Count == 4);
             bool CanAcquire()
@@ -324,8 +324,8 @@ internal static class WindowLayoutsTests
         while (choices.Count < 2 && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(10); }
         Check(choices.Count == 2 && choices.All(c => c.Selected));
         var buttons = Descendants(form).OfType<Button>().ToArray();
-        var previewButton = buttons.Single(b => b.Text == "&Preview");
-        WaitFor(() => previewButton.Enabled);
+        Check(!buttons.Any(b => b.Text == "&Preview"));
+        WaitFor(() => buttons.Single(b => b.Text == "&Apply").Enabled);
         void Preview()
         {
             var task = form.RefreshPreviewAsync();
@@ -336,10 +336,30 @@ internal static class WindowLayoutsTests
         if (!buttons.Single(b => b.Text == "&Apply").Enabled)
             throw new Exception("Preview did not enable Apply: " + string.Join(" / ", Descendants(form).OfType<Label>().Select(l => l.Text)));
         var table = Descendants(form).OfType<DataGridView>().Single();
+        Check(!table.AllowUserToResizeColumns && !table.AllowUserToResizeRows);
+        int monitorClicks=0; table.CellMouseClick+=(_,_)=>monitorClicks++;
+        var monitorCell=table.GetCellDisplayRectangle(2,1,false);
+        nint monitorPoint=((monitorCell.Top+monitorCell.Height/2)<<16) | ((monitorCell.Right-14)&0xffff);
+        SendMessage(table.Handle,0x0201,1,monitorPoint);
+        SendMessage(table.Handle,0x0202,0,monitorPoint);
+        Application.DoEvents();
+        var monitorMenu=((LayoutWindowGrid)table).MonitorMenu;
+        if(!monitorMenu.Visible || table.EditingControl is not null) throw new Exception($"Monitor menu not opened: clicks={monitorClicks}, cell={monitorCell}, client={table.ClientSize}, enabled={table.Enabled}, current={table.CurrentCell?.ColumnIndex}");
+        Check(monitorMenu.BackColor==ThemePalette.For(table).Surface);
+        using(var image=new Bitmap(monitorMenu.Width,monitorMenu.Height))
+        {
+            monitorMenu.DrawToBitmap(image,new(Point.Empty,monitorMenu.Size));
+            image.Save(Path.Combine(AppContext.BaseDirectory,"..","..","..","..",".build","layout-monitor-menu.png"));
+        }
+        ((ToolStripMenuItem)monitorMenu.Items[0]).PerformClick(); monitorMenu.Close();
+        Check(table.Rows[1].Cells[2].Value as string==Monitor.Label);
+        Check(table.CurrentCell?.RowIndex==1);
         ClickCheckbox(table, 0);
+        WaitFor(() => Descendants(form).OfType<LayoutPreview>().Single().Plan?.Placements.Length == 1);
         Check(!choices[0].Selected && table.Rows[0].Cells[0].Value is false);
         ClickCheckbox(table, 0);
         Check(choices[0].Selected && table.Rows[0].Cells[0].Value is true);
+        WaitFor(() => Descendants(form).OfType<LayoutPreview>().Single().Plan?.Placements.Length == 2);
         platform.Fullscreen.Add(2); Preview();
         Check(choices[1].Selected && table.Rows[1].Cells[3].Value as string == "Ready — will exit fullscreen");
         Check(Descendants(form).OfType<LayoutPreview>().Single().Plan!.Placements.Length == 2);

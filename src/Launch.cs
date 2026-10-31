@@ -220,7 +220,7 @@ internal static class ScheduledWorker
     {
         dynamic service = Service();
         dynamic task = service.NewTask(0);
-        task.RegistrationInfo.Description = "Closes only the Roblox singleton event on demand; no startup trigger.";
+        task.RegistrationInfo.Description = "Handles Roblox singleton events and explicit browser integration toggles on demand; no startup trigger.";
         task.Principal.UserId = Program.Sid;
         task.Principal.LogonType = 3; // TASK_LOGON_INTERACTIVE_TOKEN, no saved credentials.
         task.Principal.RunLevel = 1;

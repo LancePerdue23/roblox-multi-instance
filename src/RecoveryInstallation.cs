@@ -65,7 +65,10 @@ internal static partial class Installation
     private static bool WriteEdit(ProtocolEdit edit, bool rollback)
         => ProtocolRecovery.WriteIfMatches(Registry.CurrentUser, ProtocolPath(edit.Scheme), edit, rollback);
 
-    internal static void Execute(string action, string owner)
+    internal static void SetBrowserIntegration(bool enabled) => Execute(
+        enabled ? "enable-browser-integration" : "disable-browser-integration", Program.Sid, silent: true);
+
+    internal static void Execute(string action, string owner, bool silent = false)
     {
         if (!Program.Elevated || owner != Program.Sid || !IsAction(action)) throw new InvalidOperationException("Setup needs administrator access from this Windows account.");
         using var gate = new Mutex(false, @"Global\RobloxLaunchHelper-Installation-" + owner);
@@ -74,12 +77,12 @@ internal static partial class Installation
         {
             try { held = gate.WaitOne(TimeSpan.FromSeconds(5)); } catch (AbandonedMutexException) { held = true; }
             if (!held) throw new UserError("Another installation action is running. Wait for it to finish, then retry.");
-            ExecuteLocked(action, owner);
+            ExecuteLocked(action, owner, silent);
         }
         finally { if (held) gate.ReleaseMutex(); }
     }
 
-    private static void ExecuteLocked(string action, string owner)
+    private static void ExecuteLocked(string action, string owner, bool silent)
     {
         bool existing = File.Exists(Program.ConfigPath);
         if (!existing && action != "setup") throw new UserError("No installation was found for this Windows account. Run Setup first.");
@@ -102,7 +105,8 @@ internal static partial class Installation
                 string? backup = ProtocolRecovery.Command(config.Backups.GetValueOrDefault(scheme));
                 string? original = ProtocolRecovery.Command(config.OriginalBackups.GetValueOrDefault(scheme));
                 config.Commands[scheme] = PlayerRecovery.Resolve([wrapper ? null : current, config.Commands.GetValueOrDefault(scheme), backup, original,
-                    config.Commands.GetValueOrDefault("roblox-player")], PlayerRecovery.InstalledPlayers, PlayerRecovery.Choose);
+                    config.Commands.GetValueOrDefault("roblox-player")], PlayerRecovery.InstalledPlayers,
+                    silent ? _ => throw new UserError("Several official players were found. Select one using Recover/Repair first.") : PlayerRecovery.Choose);
                 targets.Add(config.Commands[scheme]);
             }
             if (desiredEnabled)
@@ -155,6 +159,7 @@ internal static partial class Installation
             throw;
         }
         if (action == "uninstall") { Uninstall(); return; }
+        if (silent) return;
         MessageBox.Show(desiredEnabled
             ? "Roblox Launch Helper is ready. Browser integration is enabled."
             : "Browser integration is disabled until you enable it again. Official browser launching is restored where the helper owned the registration. The desktop helper still works.",

@@ -2,7 +2,14 @@
 
 ## Unreleased
 
+- Use a fully client-painted Layouts scrollbar to prevent native white/black tracks and flashes during activation and options expansion; preserve wheel, drag, keyboard, and focus scrolling.
 - Resolve instance account names from ID-only Roblox game-join logs through public profiles; retry unavailable lookups and keep reopened clients separate by process lifetime.
+- Replace separate management windows with an Instances-first workspace: embedded Layouts, Activity, System health/updates/reports, and Settings pages.
+- Add Dark, Light, Warm Neutral, and Follow Windows appearance choices with immediate switching and high-contrast support.
+- Consolidate update checks, release notes, download progress/cancellation, verification, and explicit setup into System → Updates; passive notices navigate to that page.
+- Add consistent line navigation icons, readable themed controls, icon-free summaries, and in-window confirmations and preset naming.
+- Extend the simulated-user audit to 50 journeys and 1,000 sessions, with embedded navigation/update controls and a three-theme screenshot matrix covering three scales and the minimum window size.
+
 - Count windowed clients separately from background Roblox processes; automatically stop clients observed without windows for one minute while the system app or tray runs, with identity and visible-window rechecks and a confirmed manual cleanup action.
 - Open Diagnostics by default from the installed executable and desktop shortcut; add an explicit Launch Roblox button while preserving immediate browser Play launches.
 - Check GitHub Releases once per Windows boot with a passive update card, in-app release notes, and manual update checks in Diagnostics.

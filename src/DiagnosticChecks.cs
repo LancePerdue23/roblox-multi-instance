@@ -105,6 +105,20 @@ internal static class DiagnosticChecks
         return new(1, typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown", Environment.OSVersion.Version.ToString(),
             RuntimeInformation.ProcessArchitecture.ToString(), DateTimeOffset.UtcNow, checks.ToArray(), worker ?? NotTested, playerVersion, config?.BrowserIntegrationEnabled);
     }
+    internal static bool TaskOwnerMatches(string? userId, string expectedSid)
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return false;
+        try
+        {
+            // Task Scheduler may return an account name even when registration used a SID.
+            var owner = userId.StartsWith("S-1-", StringComparison.OrdinalIgnoreCase)
+                ? new SecurityIdentifier(userId)
+                : (SecurityIdentifier)new NTAccount(userId).Translate(typeof(SecurityIdentifier));
+            return owner.Equals(new SecurityIdentifier(expectedSid));
+        }
+        catch (IdentityNotMappedException) { return false; }
+        catch (ArgumentException) { return false; }
+    }
     private static HealthCheckResult InspectTask()
     {
         dynamic? service = null, root = null, task = null, definition = null, actions = null, action = null, principal = null, settings = null, triggers = null;
@@ -122,7 +136,7 @@ internal static class DiagnosticChecks
                 valid = action.Type == 0 && string.Equals((string)action.Path, Program.InstalledExe, StringComparison.OrdinalIgnoreCase) &&
                     (string)action.Arguments == "--worker" && string.Equals((string)action.WorkingDirectory, Program.InstallDirectory, StringComparison.OrdinalIgnoreCase);
             }
-            valid &= (string)principal.UserId == Program.Sid && principal.LogonType == 3 && principal.RunLevel == 1 &&
+            valid &= TaskOwnerMatches((string)principal.UserId, Program.Sid) && principal.LogonType == 3 && principal.RunLevel == 1 &&
                 (bool)settings.Enabled && (bool)settings.AllowDemandStart && triggers.Count == 0;
             if (!valid) return Result("task", CheckState.Failed, DiagnosticCode.TaskMismatch, Remediation.Repair);
             var descriptor = new RawSecurityDescriptor((string)task.GetSecurityDescriptor(7));

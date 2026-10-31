@@ -9,6 +9,8 @@ using CheckState = RobloxLaunchHelper.CheckState;
 
 internal static class DiagnosticsTests
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SendMessage(nint window, int message, nint wParam, nint lParam);
     private static readonly DateTimeOffset Now = new(2026, 10, 29, 12, 0, 0, TimeSpan.Zero);
     private static void Check(bool condition) { if (!condition) throw new Exception("Diagnostic assertion failed."); }
     private static LaunchResult Record(DateTimeOffset? started = null) => new(1, Guid.NewGuid(), started ?? Now, null, null,
@@ -22,6 +24,34 @@ internal static class DiagnosticsTests
     private static HealthSnapshot Snapshot(params HealthCheckResult[] checks) => new(1, "1.0.1.0", "10.0.12345.0", "X64", Now, checks, DiagnosticChecks.NotTested);
     internal static void Run(Action<string, Action> run)
     {
+        run("Integration switch serializes silent requests and reports failure inline", () =>
+        {
+            var requests = new List<bool>();
+            var pending = new TaskCompletionSource();
+            using var form = new DiagnosticsForm(false, setBrowserIntegration: (enabled, token) =>
+            {
+                requests.Add(enabled);
+                return pending.Task.WaitAsync(token);
+            }) { ShowInTaskbar = false, Opacity = 0 };
+            form.Show(); UiTestContext.Install();
+            var toggle = WorkspaceControls.Descendants(form.Instances).OfType<WorkspaceToggle>().Single();
+            var healthToggle = WorkspaceControls.Descendants(form).OfType<Button>().Single(b => b.Text.Contains("browser integration"));
+            var health = Snapshot() with { BrowserIntegrationEnabled = true };
+            form.Present(health, [], true);
+            SendMessage(toggle.Handle,0x00f5,0,0); // BM_CLICK: exercise the actual checkbox Click path.
+            Check(requests.SequenceEqual(new[] { false }) && toggle.Busy && !toggle.Enabled && toggle.Checked);
+            healthToggle.PerformClick();
+            Check(requests.Count == 1);
+            pending.SetException(new UserError("Synthetic integration failure; use Recover/Repair."));
+            UserSimulation.Wait(() => !toggle.Busy);
+            Check(WorkspaceControls.Descendants(form).OfType<Label>().Any(l => l.Text == "Synthetic integration failure; use Recover/Repair."));
+            pending = new TaskCompletionSource();
+            form.Present(health with { BrowserIntegrationEnabled = false }, [], true);
+            SendMessage(toggle.Handle,0x00f5,0,0);
+            Check(requests.SequenceEqual(new[] { false, true }) && toggle.Busy && !toggle.Checked);
+            form.Close();
+            Application.DoEvents();
+        });
         run("Dashboard startup separates app opening, setup and explicit Roblox launches", () =>
         {
             Check(Program.SelectStartup([], true) == Program.StartupMode.Dashboard);
@@ -56,13 +86,13 @@ internal static class DiagnosticsTests
                 return pending.Task.WaitAsync(token);
             }, launchError: _ => errors++) { ShowInTaskbar = false, Opacity = 0 };
             form.Show();
-            var panel = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<FlowLayoutPanel>().Single();
-            var button = panel.Controls.OfType<Button>().Single(b => b.AccessibleName == "Launch Roblox");
+            var panel = form;
+            var button = WorkspaceControls.Descendants(panel).OfType<Button>().Single(b => b.AccessibleName == "Launch Roblox");
             button.PerformClick();
             Check(starts == 1 && errors == 1 && button.Enabled);
             var launch = form.LaunchRobloxAsync();
             Check(starts == 2 && !button.Enabled);
-            Check(panel.Controls.OfType<Button>().Single(b => b.Text.Contains("Check again")).Enabled);
+            Check(WorkspaceControls.Descendants(panel).OfType<Button>().Single(b => b.Text == "&Check again").Enabled);
             Check(form.LaunchRobloxAsync().IsCompletedSuccessfully && starts == 2);
             pending.SetResult();
             Pump(launch);
@@ -240,13 +270,23 @@ internal static class DiagnosticsTests
             form.Present(snapshot, [Record() with { Outcome = LaunchOutcome.Confirmed, Code = DiagnosticCode.LaunchConfirmed, RobloxStarted = true },
                 Record(Now.AddMinutes(-1)) with { Outcome = LaunchOutcome.Warning, Code = DiagnosticCode.WorkerTimeout, RobloxStarted = true }], true);
             form.Show(); form.PerformLayout();
-            var lists = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<ListView>().ToArray();
+            var lists = new[] { WorkspaceControls.Descendants(form).OfType<ListView>().Single(l=>l.AccessibleName == "Health checks"), WorkspaceControls.Descendants(form).OfType<ListView>().Single(l=>l.AccessibleName == "Recent launch results") };
             Check(lists[0].Items.Count == 4 && lists[1].Items.Count == 2);
-            var toggle = form.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<Button>()
+            var toggle = WorkspaceControls.Descendants(form).OfType<Button>()
                 .Single(b => b.Text.Contains("browser integration"));
             Check(toggle.Enabled && toggle.Text == "Enable browser integration");
+            var instanceToggle = WorkspaceControls.Descendants(form.Instances).OfType<CheckBox>()
+                .Single(b => b.AccessibleName == "Browser integration");
+            var integrationCard = WorkspaceControls.Descendants(form.Instances).OfType<StatusCard>()
+                .Single(c => c.AccessibleName == "Browser integration summary");
+            Check(instanceToggle.Enabled && !instanceToggle.Checked && integrationCard.AccessibleDescription == "Disabled");
             form.Present(snapshot with { BrowserIntegrationEnabled = true }, [], true);
             Check(toggle.Enabled && toggle.Text == "Disable browser integration");
+            Check(instanceToggle.Enabled && instanceToggle.Checked && integrationCard.AccessibleDescription == "Enabled");
+            form.Present(snapshot with { BrowserIntegrationEnabled = null }, [], true);
+            Check(!instanceToggle.Enabled && integrationCard.AccessibleDescription == "Unknown");
+            form.Present(snapshot with { BrowserIntegrationEnabled = true }, [], true);
+            Pump(Task.Delay(200)); // Let the switch animation settle before rendering its saved state.
             string output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build")); Directory.CreateDirectory(output);
             using var bitmap = new Bitmap(form.Width, form.Height); form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
             bitmap.Save(Path.Combine(output, "dashboard-preview.png"));

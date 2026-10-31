@@ -163,6 +163,19 @@ internal static class Worker
                     }
                     lock (gate) { received = true; lastActivity = Environment.TickCount64; }
                     if (command == "PROBE") { await Protocol.WriteAsync(pipe, "OK", timeout.Token); return; }
+                    if (command is "INTEGRATION-ON" or "INTEGRATION-OFF")
+                    {
+                        // Only fixed settings are accepted; never accept installer actions or paths over IPC.
+                        string result = "OK";
+                        try { await Task.Run(() => Installation.SetBrowserIntegration(command == "INTEGRATION-ON")); }
+                        catch (Exception e)
+                        {
+                            Log.Write("integration-change-failed", e.GetType().Name, e.HResult);
+                            result = "FAILED";
+                        }
+                        await Protocol.WriteAsync(pipe, result, timeout.Token);
+                        return;
+                    }
                     if (command != "LAUNCH") return;
                     // Clear any leftover singleton before the next Roblox process starts.
                     await scan.ScanAsync();

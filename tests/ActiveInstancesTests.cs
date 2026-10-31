@@ -322,11 +322,19 @@ internal static class ActiveInstancesTests
         picker.SelectedIndex = 1; Check(form.SelectedTarget == new InstanceTarget(second.Key, 201));
         form.Present(InstanceSnapshot.Failed);
         Check(list.Items[0].SubItems[5].Text == "Stale");
+        Check(Descendants(form).OfType<StatusCard>().Where(card => card.AccessibleName is "Windows summary" or "Background summary").All(card => card.AccessibleDescription == "Stale"));
         form.Present(new([second with { Key = new(43, Created + 2) }], 0)); Check(form.SelectedTarget is null);
         form.Present(new([first, second, first with { Key = new(44, Created + 3), Windows = [], CpuPercent = null,
             CpuAvailable = false, WorkingSet = null }], 1));
-        Check(Descendants(form).OfType<Label>().Any(label => label.Text.StartsWith("2 client(s) with windows; 1 background process(es)")));
+        Check(Descendants(form).OfType<StatusCard>().Any(card=>card.AccessibleName=="Windows summary" && card.AccessibleDescription=="3") && Descendants(form).OfType<StatusCard>().Any(card=>card.AccessibleName=="Background summary" && card.AccessibleDescription=="1"));
         Check(list.Items[2].Text == "No visible window" && list.Items[2].SubItems[5].Text == "Background / starting");
+        list.Items[2].Selected = true;
+        Check(Descendants(form).OfType<Label>().Single(label => label.AccessibleName == "Window action result").Text.Contains("No visible window"));
+        form.Present(new([], 0));
+        Check(Descendants(form).OfType<Label>().Single(label => label.AccessibleName == "Window action result").Text == "Select a client to view its process details and window actions.");
+        Check(Descendants(form).OfType<Button>().Single(button => button.AccessibleName == "Launch Roblox from empty instances").Visible);
+        form.Present(new([first, second], 0));
+        list.Items[0].Selected = true;
         Check(list.Visible && list.Width > 500 && list.Height > 100);
         form.CreateControl();
         string output = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build");

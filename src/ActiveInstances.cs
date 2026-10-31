@@ -194,7 +194,7 @@ internal sealed class InstanceRefreshController(Func<IInstanceCollector> factory
                 source.Token.ThrowIfCancellationRequested();
                 if (disposed || version != generation) return;
                 present(result);
-                await (delay?.Invoke(source.Token) ?? Task.Delay(TimeSpan.FromSeconds(2), source.Token));
+                await (delay?.Invoke(source.Token) ?? Task.Delay(TimeSpan.FromSeconds(1), source.Token));
             }
         }
         catch (OperationCanceledException) { }

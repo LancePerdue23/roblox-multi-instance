@@ -28,8 +28,12 @@ internal static class Program
             string mode = args.FirstOrDefault() ?? "";
             if (mode is "--check-updates" or "--updates")
             {
-                if (args.Length != 1) return 2;
-                return UpdateHost.Run(mode == "--check-updates");
+                if (args.Length != 1 || Elevated) return 2;
+                if (mode == "--check-updates") return UpdateHost.Run(true);
+                if (WorkspaceNavigationPipe.SendAsync(false).GetAwaiter().GetResult()) return 0;
+                Application.EnableVisualStyles();
+                using var updateManager = new ManagerHost(initialTarget: new(WorkspaceSection.System, SystemSection.Updates));
+                Application.Run(updateManager); return 0;
             }
             if (mode == "--update-handoff") return UpdateSetup.Run(args);
             if (mode == "--launch-notifications")
@@ -90,7 +94,7 @@ internal static class Program
             {
                 if (Elevated) throw new UserError("Open Diagnostics normally, without Run as administrator, so checks use your normal Windows permissions.");
                 Application.EnableVisualStyles();
-                using var manager = new ManagerHost();
+                using var manager = new ManagerHost(initialTarget: mode == "--diagnostics" ? new(WorkspaceSection.System) : null);
                 UpdateHost.TryStartAutomatic();
                 Application.Run(manager);
                 return 0;

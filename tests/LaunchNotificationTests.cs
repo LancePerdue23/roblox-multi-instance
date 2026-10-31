@@ -175,7 +175,7 @@ internal static class LaunchNotificationTests
         {
             using var settings = new NotificationSettingsForm(new NotificationPreferences(Path.Combine(dir, "settings.json")));
             settings.Show(); Application.DoEvents();
-            var options = settings.Controls.OfType<FlowLayoutPanel>().Single().Controls.OfType<CheckBox>().ToArray();
+            var options = WorkspaceControls.Descendants(settings).OfType<CheckBox>().ToArray();
             Check(options.Length == 2 && options.All(c => !c.Checked));
             using var image = new Bitmap(settings.Width, settings.Height); settings.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
             string output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".build")); Directory.CreateDirectory(output);
