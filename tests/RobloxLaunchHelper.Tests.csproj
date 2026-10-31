@@ -7,5 +7,5 @@
     <Nullable>enable</Nullable>
     <AssemblyName>RobloxLaunchHelper.Tests</AssemblyName>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../src/RobloxLaunchHelper.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../src/helper/RobloxLaunchHelper.csproj" /></ItemGroup>
 </Project>

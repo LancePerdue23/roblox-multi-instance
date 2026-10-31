@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Promote the web desktop source and executable identity; preserve a verified local WinForms archive.
+- Consolidate duplicated compatibility services and migrate valid Preview preferences without overwriting existing primary settings.
+- Distribution installers and terminal-only helper remain in preparation.
+
 - Use a fully client-painted Layouts scrollbar to prevent native white/black tracks and flashes during activation and options expansion; preserve wheel, drag, keyboard, and focus scrolling.
 - Resolve instance account names from ID-only Roblox game-join logs through public profiles; retry unavailable lookups and keep reopened clients separate by process lifetime.
 - Replace separate management windows with an Instances-first workspace: embedded Layouts, Activity, System health/updates/reports, and Settings pages.

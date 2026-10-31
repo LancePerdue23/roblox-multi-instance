@@ -1,0 +1,1 @@
+namespace RobloxMultiInstance.Helper; internal static class Entry { [System.STAThread] static int Main(string[] args) => RobloxLaunchHelper.Program.Main(args); }
