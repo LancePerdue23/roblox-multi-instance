@@ -4,7 +4,7 @@
 
 ## Current distribution and publication
 
-Use the shared version in `Directory.Build.props`, root `Package.ps1`, and `Test-Distribution.ps1`. The release assets are edition-specific installers plus the portable ZIP, checksums and `assets.json`; a standalone helper executable is no longer the current distribution. Follow [distribution preparation](distribution-preparation.md) and the [v1.0.0 acceptance gate](releases/v1.0.0.md). Keep the repository private and hold publication until acceptance is complete. The unauthenticated updater cannot access private releases; authenticated manual downloads remain necessary.
+Use the shared version in `Directory.Build.props`, root `Package.ps1`, and `Test-Distribution.ps1`. The release assets are edition-specific installers plus the portable ZIP, checksums and `assets.json`; a standalone helper executable is no longer the current distribution. Follow [distribution preparation](distribution-preparation.md) and the [v1.0.0 acceptance gate](releases/v1.0.0.md). Keep the repository private; both editions are validation prereleases pending live acceptance. The unauthenticated updater cannot access private releases and deliberately ignores prereleases; authenticated manual downloads remain necessary.
 
 ## Historical standalone-helper publication procedure (superseded)
 

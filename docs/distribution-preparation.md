@@ -1,8 +1,8 @@
 # Distribution implementation and acceptance
 
-The desktop and helper editions now have buildable installers. Publication and live Windows acceptance remain pending.
+The desktop and helper editions have installers published as separate private validation prereleases. Live Windows acceptance and stable production release remain pending.
 
-The first planned GitHub release is v1.0.0; see [release notes and acceptance gate](releases/v1.0.0.md). Unpublished development builds numbered 1.0.1 or 1.1.0 must be explicitly uninstalled before installing 1.0.0; numeric downgrade protection is retained for modern and legacy installs. The owner requested a publication hold until manual acceptance is complete. Keep the repository private.
+The full app + helper release is v1.0.0; the helper-only release is helper-v1.0.0. Both contain product version 1.0.0 and are marked prerelease, not Latest. See [release notes and acceptance gate](releases/v1.0.0.md). Unpublished development builds numbered 1.0.1 or 1.1.0 must be explicitly uninstalled before installing 1.0.0; numeric downgrade protection is retained for modern and legacy installs. The owner subsequently authorized separate releases followed by testing; stable promotion remains gated on manual acceptance. Keep the repository private.
 
 ## Build and verify
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 — release candidate (publication held)
+## 1.0.0 — validation prereleases
 
 - First planned GitHub release: Windows x64 desktop app and on-demand helper editions, both including rmi.exe.
 - Add matching graphical installers, portable desktop packaging, edition manifests, SHA-256 verification, and explicit setup/update handoff.
@@ -8,6 +8,7 @@
 - Normalize unpublished development version 1.1.0 to release version 1.0.0; retain numeric downgrade and edition-switch protections, including legacy installations.
 - Inspect setup edition, protocol and embedded payload hashes during update verification before handoff; verify every portable member and publish checksums for all packages.
 - Live Windows installation, upgrade, uninstall, gameplay, DPI, theme and accessibility acceptance remain pending. See docs/releases/v1.0.0.md.
+- Publish separate private helper-only and full app + helper validation prereleases; verify downloaded assets and isolated startup for both editions. Stable production acceptance remains pending.
 
 ## Prior development notes (historical)
 
