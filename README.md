@@ -1,33 +1,262 @@
+<div align="center">
+
 # Roblox Multi Instance
 
-The primary desktop app uses React/TypeScript/CSS in a WPF/WebView2 host with C# Windows services. Active source lives under src/desktop; shared services live under src/core and the compatible installed helper entrypoint lives under src/helper.
+A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
+
+[![Release](https://img.shields.io/badge/release-v1.0.1-blue)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.0.1)
+[![Downloads](https://img.shields.io/badge/package_downloads-0-brightgreen)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows)
+![Architecture](https://img.shields.io/badge/architecture-x64-informational)
+![Status](https://img.shields.io/badge/channel-prerelease-orange)
+
+**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.0.1/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.0.1) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+
+</div>
+
+The download badge is a snapshot as of November 5, 2026, covering installers and portable packages across all releases. It counts downloads, not unique users. This private repository cannot supply a public live badge; maintainers can refresh the count with `scripts/Get-DownloadCounts.ps1`.
+
+## Table of contents
+
+- [What is Roblox Multi Instance?](#what-is-roblox-multi-instance)
+- [Features](#features)
+- [Getting started](#getting-started)
+- [Which download do I need?](#which-download-do-i-need)
+- [FAQ](#faq)
+- [Architecture](#architecture)
+- [Technology stack](#technology-stack)
+- [Repository layout](#repository-layout)
+- [Development](#development)
+- [Testing and packaging](#testing-and-packaging)
+- [Data and optional services](#data-and-optional-services)
+- [Further documentation](#further-documentation)
+
+## What is Roblox Multi Instance?
+
+Roblox Multi Instance combines a graphical desktop workspace with an on-demand Windows launch helper. The desktop provides instance visibility, launch activity, account organization, game targets, performance monitoring, and maintenance tools. The helper handles browser Play integration and coordinates the shared launch services.
+
+Choose the **App + Helper** edition for the complete workspace. Choose **Helper only** if you want browser Play integration and terminal commands without the desktop interface. Both editions include the `rmi` command-line tools.
+
+The current releases are prereleases. Experimental features and live-game verification limits are described below; implementation and automated tests do not establish compatibility with every Roblox update or Windows configuration.
+
+## Features
+
+| Area | What is included |
+| --- | --- |
+| Launch coordination | On-demand helper, browser Play integration, startup observation, and recovery diagnostics. |
+| Instances | Running-client visibility, validated window focus, and an experimental opt-in live preview grid with pause, privacy, fit, density, and retry controls. |
+| Activity | Launch history and diagnostics, independent of whether previews are enabled. |
+| Accounts | Local sign-in profiles, search, groups, notes, colors, favorites, and saved ordering. |
+| Games | Experience target validation, game artwork, favorites/recent targets, and saved batch/layout groundwork. |
+| Performance | Per-process CPU, working set, private commit, uptime, and I/O monitoring; history, saved profiles, and explicit CPU priority/EcoQoS controls where supported. |
+| Maintenance | Installation health, repair/recovery, browser integration settings, report export, and uninstall tools. |
+| Terminal | Interactive `rmi` menu, direct commands, and structured `--json` results for scripts. |
+| Privacy and support | Optional error reporting, off by default, plus cosmetic supporter receipt support when configured. Features remain free. |
+
+**Current limits:** account batch launching and account-to-window matching still require controlled live acceptance. Do not rely on unattended account batches. Preview capture is experimental. Saved FPS and graphics preferences do not currently change Roblox clients; performance profiles do not promise RAM savings. CPU priority and EcoQoS behavior depends on Windows support and process permissions.
+
+## Getting started
+
+### 1. Check requirements
+
+- Windows 10 or Windows 11 on an x64 PC. Windows/GPU compatibility testing is still in progress.
+- Roblox Player installed for the Windows account you will use.
+- Microsoft Edge WebView2 Evergreen Runtime for the graphical desktop.
+- Access to this repository's releases while the repository is private.
+
+Release packages include the .NET runtime. Node.js and the .NET SDK are development requirements, not prerequisites for using the packaged app.
+
+### 2. Install the recommended edition
+
+1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.0.1).
+2. Download and run **`RobloxMultiInstance-Setup.exe`**.
+3. Review the browser Play integration option during setup. It is enabled by default on a fresh installation; upgrades retain your preference.
+4. Open Roblox Multi Instance and check **System → Health** for installation or helper issues.
+5. With browser integration enabled, use **Play** on Roblox as usual. Use Instances and Activity to inspect clients and launch outcomes.
+
+The full installer includes the matching helper and CLI. You do not also need the helper-only installer. Ordinary desktop startup does not install the helper automatically.
+
+### 3. Optional: use the terminal
+
+Open a **new terminal after installation** so it picks up the registered `rmi` command:
+
+```powershell
+rmi
+rmi --help
+rmi status
+rmi diagnostics
+```
+
+Bare `rmi` opens an interactive menu. Browser Play integration works without keeping that menu open. See the [CLI guide](docs/helper-cli.md) for details.
+
+## Which download do I need?
+
+Download **one main package** for the edition you want:
+
+| Release asset | Purpose |
+| --- | --- |
+| **`RobloxMultiInstance-Setup.exe`** | **Recommended:** installs the desktop, matching helper, and CLI together. |
+| `RobloxMultiInstance-Portable.zip` | Extract and run the desktop with its entire folder intact. Browser integration and launch/maintenance still need the matching installed helper; use explicit setup through System → Health. The ZIP includes the matching full setup. |
+| `RobloxLaunchHelper-Setup.exe` | Available in the separate helper-only release. Installs the on-demand helper and CLI without desktop assets. |
+| `*.sha256` | Optional checksum for the matching download. |
+| `SHA256SUMS.txt` | Combined checksums for the release's packages and metadata. |
+| `assets.json` | Version, edition, size, hash, and payload metadata used by update tooling. No manual installation required. |
+| `Source code (zip)` / `Source code (tar.gz)` | GitHub-generated source archives for developers, not runnable app packages. |
+
+To check a download, compare its SHA-256 result with its published checksum:
+
+```powershell
+Get-FileHash .\RobloxMultiInstance-Setup.exe -Algorithm SHA256
+```
+
+## FAQ
+
+### Do I need both installers?
+
+No. App + Helper already contains the helper and CLI. Helper only is an alternative edition for people who do not want the graphical workspace.
+
+### Is the CLI a separate edition?
+
+No. Both installer editions include `rmi`. Helper only also handles browser launches; it is not limited to terminal use.
+
+### Must I uninstall before every update?
+
+No. Same-edition upgrades are designed to preserve settings, launch history, and integration preferences. Uninstall first when **switching between App + Helper and Helper only**. Downgrades are rejected. Uninstall retains user data by default unless you explicitly choose removal.
+
+### How should I update right now?
+
+Download the newer installer for your existing edition from Releases and run it. In-app update tooling has verification restrictions, and unauthenticated update checks cannot retrieve this private repository's releases. Use manual downloads for the current builds.
+
+### Can I use the portable app without installing anything?
+
+You can extract and open the desktop, but launch and maintenance require a matching installed helper. Portable does not make browser integration installation-free. Use System → Health to run setup explicitly.
+
+### Does the helper stay running all the time?
+
+Helper-only browser launches are windowless and on demand. That edition does not start a resident tray host, automatic update notifications, or resident cleanup. Desktop features may run background work while the app is open.
+
+### Can I automatically launch all saved accounts?
+
+Account organization and batch-launch infrastructure are implemented, but real-account authentication, correct-account joins, and window correlation still need live acceptance. Treat account launching as experimental rather than a guaranteed unattended workflow.
+
+### Does it unlock FPS or reduce memory automatically?
+
+No such result is promised. Monitoring shows measured resource usage. Supported priority/EcoQoS controls can be applied explicitly; saved FPS/graphics requests remain unapplied preferences.
+
+### Is reporting required? Do features require payment?
+
+No. Technical error reporting is optional and off by default. Default builds have no reporting endpoint or payment configuration. Supporter receipts are cosmetic; features remain free. Saved account sessions are not sent to the developer.
+
+### What should I check when launching fails?
+
+Start with System → Health and Activity, or run `rmi status` and `rmi diagnostics`. Check that Roblox Player is installed, the helper matches the desktop version, and browser integration is enabled if you launch through Play. Use the repair/recovery flow when offered. Review exported diagnostics before sharing them.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI[React desktop interface] --> Bridge[WPF / WebView2 host and typed bridge]
+    Bridge --> Backend[C# desktop backend]
+    Backend --> Core[Shared core services]
+    Browser[Roblox browser Play] --> Helper[On-demand helper]
+    CLI[rmi command-line tools] --> Core
+    Helper --> Core
+    Core --> Windows[Windows processes, launch coordination and integration]
+    Setup[Edition-aware setup] --> Install[Desktop + helper or helper-only installation]
+```
+
+The frontend renders the workspace and calls a typed native bridge. The host manages the Windows window, WebView2 lifecycle, native sign-in windows, and preview capture. The backend exposes application operations and coordinates account, game, performance, and support services.
+
+`src/core` owns shared launch, readiness, diagnostics, installation, settings, and update behavior. Both the helper and CLI use that layer. Desktop notification presentation is separate from the shared core. Setup packages edition-specific payloads and validates installation metadata and file manifests.
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Desktop interface | React 19, TypeScript, CSS |
+| Frontend tooling | Vite, npm |
+| Windows host | C# / .NET 10, WPF, Microsoft Edge WebView2; Windows Forms for tray interop |
+| Shared services, helper, CLI, setup | C# / .NET 10 with Windows APIs |
+| Frontend verification | Vitest and Playwright |
+| Native verification | .NET fixture projects and PowerShell orchestration |
+| Packaging | Self-contained Windows x64 output, embedded edition manifests, ZIP payloads, SHA-256 checksums |
+| Optional hosted services | Cloudflare Workers and D1 for configured telemetry/support services |
+
+## Repository layout
+
+```text
+src/
+  core/                 Shared Windows services and compatibility logic
+  helper/               Installed browser/worker helper entrypoint
+  cli/                  rmi command-line entrypoint
+  setup/                Edition-aware installer
+  desktop/
+    web/                React interface and browser tests
+    host/               WPF/WebView2 host, sign-in and capture
+    backend/            Desktop operations and typed contracts
+    presentation/       Desktop notification presentation
+    *-tests/            Native host and feature fixtures
+tests/                  Shared-service fixtures
+services/
+  telemetry/            Optional technical-report ingestion service
+  support/              Optional contribution and receipt service
+scripts/                Maintainer utilities, including download counts
+docs/                   Design notes, guides, and acceptance checklists
+```
 
 ## Development
 
-Use Windows x64, Node.js, and .NET 10. The scripts default to the local SDK at .build/sdk/dotnet.exe.
+Use Windows x64, Node.js/npm, PowerShell, and the .NET 10 SDK. Scripts default to the repository-local SDK at `.build/sdk/dotnet.exe`; supply `-Dotnet` when using another SDK location. The frontend build restores its npm dependencies.
 
-~~~powershell
-./Test.ps1 -VerifyArchive
+```powershell
 ./Build.ps1
 ./Dev.ps1
-~~~
+```
 
-The latest development build always goes to `.build/desktop/RobloxMultiInstance.exe`; reuse this location for each normal build. Close that development app before rebuilding. Run it with its entire output folder. Node.js is needed only to build. WebView2 Evergreen Runtime is required to run the desktop UI.
+The consistent latest development executable is **`.build/desktop/RobloxMultiInstance.exe`**. Close that development app before rebuilding, and keep its output folder intact. `Build.ps1` builds the desktop; `Dev.ps1` builds and opens it. Neither installs the helper automatically.
 
-The desktop requires a matching installed helper for launch and maintenance. Graphical setup installs both together; portable builds offer explicit setup through System → Health. Opening the desktop does not install the helper. Settings migrate from Preview into %LOCALAPPDATA%/RobloxMultiInstance when destination settings are absent. Originals remain intact. Shared helper history and installation identities retain their existing locations.
+To use the CLI from the checkout without installation:
 
-The frozen WinForms executable, source, verification report, and hashes are local under archive/legacy-winforms. Run VerifyArchive.ps1 to check integrity. The archive is ignored by Git and must be backed up separately if desired.
+```powershell
+./rmi.ps1 --help
+```
 
-## Optional reporting, support, and accounts
+## Testing and packaging
 
-Settings → Privacy controls optional technical error reporting, off by default. Settings → Support manages cosmetic signed supporter receipts; all features remain free. Default builds have no reporting endpoint or payment configuration. Owner setup guides: [telemetry and download counts](docs/telemetry.md), [supporter payments](docs/supporter-setup.md).
+```powershell
+./Test.ps1
+./Test-Shared.ps1
+./Package.ps1
+./Test-Distribution.ps1 -ExpectedVersion 1.0.1.0
+```
 
-Accounts provides local Roblox sign-in profiles, game-target validation, and ordered batch groundwork. Automated account launching remains disabled until live authentication and account/window matching pass the [feasibility acceptance gate](docs/account-launch-feasibility.md). Saved sessions never go to the developer. `Test.ps1` includes local feature/service fixtures; `Test-Shared.ps1` covers the shared helper.
+- `Test.ps1`: current desktop/native contracts, frontend checks, browser workflows, and account/support/service fixtures.
+- `Test-Shared.ps1`: shared helper and service regression fixtures; required when changing the installed helper or shared services.
+- `Package.ps1`: fresh staging and both installer editions, portable ZIP, manifests, and checksums under ignored `artifacts/`.
+- `Test-Distribution.ps1`: read-only package hashes, embedded payloads, edition boundaries, and portable contents; does not install or launch Roblox. Pass the version being packaged.
 
-## Packaging
+Some native tests need access to temporary registry keys and ACL fixtures. Live Roblox, installation, upgrade, repair, and uninstall acceptance are separate from fixture tests. See the [Windows acceptance checklist](docs/releases/windows-acceptance.md) and [milestone audit](docs/milestone-audit.md).
 
-Run `Package.ps1` to build desktop + helper and helper-only installer editions, plus the portable desktop ZIP, checksums, and asset manifest under `artifacts/`. Run `Test-Distribution.ps1` to inspect them without installing. `Build.ps1` produces the development desktop folder. Both editions include `rmi.exe`; see `rmi --help`. Live installation and release acceptance remain pending; see [distribution status](docs/distribution-preparation.md).
+The frozen WinForms reference is local under ignored `archive/legacy-winforms` and is not the current app. `VerifyArchive.ps1` checks its hashes when that archive is present. Retired UI tests run only through explicit `Test-ArchivedUI.ps1`; they are excluded from normal desktop verification.
 
-Live Roblox, installation, repair, and uninstall require separate controlled acceptance checks. Nothing is automatically installed or published by development builds.
+## Data and optional services
 
-For occasional basic-user/power-user journeys, synthetic stress testing, native-host checks, and opt-in real Roblox testing, see [Milestone audit](docs/milestone-audit.md). Shared-service regressions use `Test-Shared.ps1`; retired UI tests require the explicit `Test-ArchivedUI.ps1` command.
+Desktop preferences live under `%LOCALAPPDATA%/RobloxMultiInstance`. Missing preferences can migrate from Preview without replacing existing primary settings or modifying the originals. Shared helper history and installation identities retain their own existing locations.
+
+Account profiles use local storage and protected session handling. Existing WebView2 browser profiles must not be described as a master-password-encrypted vault. See the [account feasibility and acceptance guide](docs/account-launch-feasibility.md) for boundaries.
+
+Telemetry and contribution services require separate owner configuration; repository source alone does not deploy them. Never place credentials or private session data in source control. Public distribution builds exclude machine-local supporter preview tools.
+
+## Further documentation
+
+- [CLI and interactive helper menu](docs/helper-cli.md)
+- [Distribution and installation behavior](docs/distribution-preparation.md)
+- [Startup resilience](docs/startup-resilience.md)
+- [Launch startup and recovery](docs/launch-startup-recovery.md)
+- [Performance implementation and limits](docs/performance-optimizations.md)
+- [Live client preview grid](docs/live-client-preview-grid-plan.md)
+- [Account launch feasibility](docs/account-launch-feasibility.md)
+- [Game library and account batches](docs/multilaunch-game-library.md)
+- [Telemetry and download counts](docs/telemetry.md)
+- [Supporter service setup](docs/supporter-setup.md)
+- [Changelog](CHANGELOG.md)
