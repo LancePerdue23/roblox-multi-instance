@@ -2,6 +2,7 @@ name: Refresh download badge
 on:
   release:
     types: [published]
+  public:
   workflow_dispatch:
 permissions:
   contents: write
@@ -23,7 +24,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/assets/badges/downloads.svg
+          git add README.md docs/assets/badges/downloads.svg
           if ! git diff --cached --quiet; then
             git commit -m "Refresh package download count"
             git push origin HEAD:main

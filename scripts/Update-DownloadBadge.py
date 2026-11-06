@@ -37,3 +37,27 @@ svg = re.sub(r'M118 0h\d+v20H118z', f'M118 0h{width}v20H118z', svg)
 path.write_text(svg, encoding="utf-8")
 print(f"Package downloads: {count}")
 
+
+# Public repositories can use a live badge without committing counter updates.
+request = Request(
+    f"https://api.github.com/repos/{repository}",
+    headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "User-Agent": "rmi-download-badge"},
+)
+with urlopen(request, timeout=30) as response:
+    public = not json.load(response)["private"]
+if public:
+    readme = path.parents[3] / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    text = text.replace(
+        "[![Downloads](docs/assets/badges/downloads.svg)]",
+        f"[![Downloads](https://img.shields.io/github/downloads/{repository}/total)]",
+    )
+    text = re.sub(
+        r"The download badge refreshes[^\n]+",
+        "The live download badge totals GitHub release asset download requests, including repeat downloads and verification files; it does not count unique users. Badge caching can delay updates. No counter-update commits are needed while the repository is public.",
+        text,
+    )
+    readme.write_text(text, encoding="utf-8")
+    # Keep the snapshot unchanged once live counts are available.
+    import subprocess
+    subprocess.run(["git", "restore", "--", str(path)], check=True)
