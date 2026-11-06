@@ -14,7 +14,7 @@ A Windows workspace for launching, monitoring, and managing multiple Roblox clie
 
 </div>
 
-The download badge is a snapshot as of November 5, 2026, covering installers and portable packages across all releases. It counts downloads, not unique users. This private repository cannot supply a public live badge; maintainers can refresh the count with `scripts/Get-DownloadCounts.ps1`.
+The download badge refreshes after release publication through GitHub Actions. It totals installer and portable package downloads across published releases, including prereleases; it counts download requests, not unique users. Removed release assets are no longer included. GitHub image caching can delay the displayed count. Maintainers can also run the Refresh download badge workflow manually. It does not run on a schedule.
 
 ## Table of contents
 
@@ -260,4 +260,3 @@ Telemetry and contribution services require separate owner configuration; reposi
 - [Telemetry and download counts](docs/telemetry.md)
 - [Supporter service setup](docs/supporter-setup.md)
 - [Changelog](CHANGELOG.md)
-
