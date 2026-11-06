@@ -4,11 +4,11 @@
 
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
-[![Release](https://img.shields.io/badge/release-v1.0.1-blue)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.0.1)
-[![Downloads](https://img.shields.io/badge/package_downloads-0-brightgreen)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
-![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows)
-![Architecture](https://img.shields.io/badge/architecture-x64-informational)
-![Status](https://img.shields.io/badge/channel-prerelease-orange)
+[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.0.1)
+[![Downloads](docs/assets/badges/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+![Windows](docs/assets/badges/windows.svg)
+![Architecture](docs/assets/badges/architecture.svg)
+![Status](docs/assets/badges/status.svg)
 
 **[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.0.1/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.0.1) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 
@@ -260,3 +260,4 @@ Telemetry and contribution services require separate owner configuration; reposi
 - [Telemetry and download counts](docs/telemetry.md)
 - [Supporter service setup](docs/supporter-setup.md)
 - [Changelog](CHANGELOG.md)
+
