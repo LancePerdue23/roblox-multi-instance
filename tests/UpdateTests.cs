@@ -111,7 +111,7 @@ internal static class UpdateTests
             using var client = Client(request => request.RequestUri!.Host == "github.com"
                 ? new(HttpStatusCode.Redirect) { Headers = { Location = new("https://release-assets.githubusercontent.com/fixture") } }
                 : new(HttpStatusCode.OK) { Content = new ByteArrayContent(Payload) });
-            var downloader = new UpdateDownloader(client, directory, _ => New);
+            var downloader = new UpdateDownloader(client, directory, _ => New, verifyPublisher: _ => {});
             using var download = await downloader.DownloadAsync(Release(), null, default);
             Check(File.ReadAllBytes(download.Executable).SequenceEqual(Payload) && Path.GetFileName(download.Executable) == "RobloxLaunchHelper.exe");
             Check(Directory.GetFiles(Path.GetDirectoryName(download.Executable)!).Length == 2);
@@ -123,14 +123,47 @@ internal static class UpdateTests
             foreach (var payload in new[] { Payload, Payload[..^1], Payload.Concat(new byte[] { 1 }).ToArray(), new byte[Payload.Length] })
             {
                 using var client = Client(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) });
-                var downloader = new UpdateDownloader(client, directory, _ => Current);
+                var downloader = new UpdateDownloader(client, directory, _ => Current, verifyPublisher: _ => {});
                 Throws<InvalidDataException>(() => downloader.DownloadAsync(Release(), null, default).GetAwaiter().GetResult());
                 Check(!Directory.EnumerateFileSystemEntries(directory).Any());
             }
             using var validClient = Client(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(Payload) });
-            using var download = await new UpdateDownloader(validClient, directory, _ => New).DownloadAsync(Release(), null, default);
+            using var download = await new UpdateDownloader(validClient, directory, _ => New, verifyPublisher: _ => {}).DownloadAsync(Release(), null, default);
             await File.WriteAllBytesAsync(download.Executable, new byte[Payload.Length]);
-            Throws<InvalidDataException>(() => new UpdateDownloader(validClient, directory, _ => New).VerifyAsync(download.Executable, Release(), default).GetAwaiter().GetResult());
+            Throws<InvalidDataException>(() => new UpdateDownloader(validClient, directory, _ => New, verifyPublisher: _ => {}).VerifyAsync(download.Executable, Release(), default).GetAwaiter().GetResult());
+        })));
+        run("Publisher trust fails closed without pins and rejects untrusted or different signers", () => Store(directory =>
+        {
+            string pin = new('A', 64); bool inspected = false;
+            Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify("fixture", "", _ => { inspected = true; return pin; }));
+            Check(!inspected);
+            if(!UpdatePublisherTrust.IsConfigured){
+                int requests=0;
+                using var client=Client(_=>{requests++;return new(HttpStatusCode.OK){Content=new ByteArrayContent(Payload)};});
+                Throws<InvalidDataException>(()=>new UpdateDownloader(client,directory,_=>New).DownloadAsync(Release(),null,default).GetAwaiter().GetResult());
+                Check(requests==0);
+            }
+            Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify("fixture", pin, _ => null));
+            Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify("fixture", pin, _ => new string('B', 64)));
+            UpdatePublisherTrust.Verify("fixture", pin, _ => pin.ToLowerInvariant());
+            string unsigned = Path.Combine(directory, "unsigned.exe"); File.WriteAllBytes(unsigned, Payload);
+            Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify(unsigned, pin, UpdatePublisherTrust.TrustedSigner));
+        }));
+        run("Publisher rejection precedes setup execution and cleans staged downloads", () => Store(directory => Async(async () =>
+        {
+            byte[] metadata = System.Text.Encoding.UTF8.GetBytes(System.Text.Encoding.UTF8.GetString(Json()).Replace("RobloxLaunchHelper.exe", "RobloxMultiInstance-Setup.exe"));
+            var release = GitHubReleaseSource.Parse(metadata,"Desktop")!;
+            using var client = Client(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(Payload) });
+            int inspections = 0, signatures = 0;
+            var rejected = new UpdateDownloader(client, directory, _ => New,
+                (_,_,_) => { inspections++; return Task.CompletedTask; }, _ => { signatures++; throw new InvalidDataException("Untrusted fixture signer"); });
+            try { using var result = await rejected.DownloadAsync(release,null,default); throw new Exception("Publisher rejection ignored"); }
+            catch(InvalidDataException) { Check(signatures == 1 && inspections == 0 && !Directory.EnumerateFileSystemEntries(directory).Any()); }
+            var accepted = new UpdateDownloader(client,directory,_=>New,(_,_,_)=>{inspections++;return Task.CompletedTask;},_=>signatures++);
+            using var download = await accepted.DownloadAsync(release,null,default);
+            int before=signatures;
+            await accepted.VerifyAsync(download.Executable,release,default);
+            Check(signatures==before+1 && inspections==2);
         })));
         run("Edition setup downloads inspect embedded payloads after digest and version checks and before handoff", () => Store(directory => Async(async () =>
         {
@@ -143,10 +176,10 @@ internal static class UpdateTests
                 using var client=Client(_=>new(HttpStatusCode.OK){Content=new ByteArrayContent(Payload)});
                 int inspections=0;
                 Task Inspect(string path,string expected,CancellationToken token){Check(expected==edition&&Path.GetFileName(path)==assetName);inspections++;return Task.CompletedTask;}
-                var downloader=new UpdateDownloader(client,directory,_=>New,Inspect);
+                var downloader=new UpdateDownloader(client,directory,_=>New,Inspect,verifyPublisher:_=>{});
                 using var download=await downloader.DownloadAsync(release,null,default);
                 Check(inspections==1);await downloader.VerifyAsync(download.Executable,release,default);Check(inspections==2);
-                var rejected=new UpdateDownloader(client,directory,_=>New,(_,_,_)=>throw new InvalidDataException("Rejected fixture payload."));
+                var rejected=new UpdateDownloader(client,directory,_=>New,(_,_,_)=>throw new InvalidDataException("Rejected fixture payload."),verifyPublisher:_=>{});
                 Throws<InvalidDataException>(()=>rejected.VerifyAsync(download.Executable,release,default).GetAwaiter().GetResult());
                 await File.WriteAllBytesAsync(download.Executable,new byte[Payload.Length]);
                 Throws<InvalidDataException>(()=>downloader.VerifyAsync(download.Executable,release,default).GetAwaiter().GetResult());Check(inspections==2);
@@ -156,12 +189,12 @@ internal static class UpdateTests
         {
             using (var client = new HttpClient(new Handler(async (_, token) => { await Task.Delay(Timeout.Infinite, token); return new(HttpStatusCode.OK); })))
             using (var cancellation = new CancellationTokenSource(30))
-                Throws<OperationCanceledException>(() => new UpdateDownloader(client, directory, _ => New).DownloadAsync(Release(), null, cancellation.Token).GetAwaiter().GetResult());
+                Throws<OperationCanceledException>(() => new UpdateDownloader(client, directory, _ => New, verifyPublisher: _ => {}).DownloadAsync(Release(), null, cancellation.Token).GetAwaiter().GetResult());
             Check(!Directory.EnumerateFileSystemEntries(directory).Any());
             foreach (string redirect in new[] { "https://evil.example/payload", "http://release-assets.githubusercontent.com/payload", "https://github.com/other/project/releases/download/v1/a.exe", "https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1/loop.exe" })
             {
                 using var client = Client(_ => new(HttpStatusCode.Redirect) { Headers = { Location = new(redirect) } });
-                Throws<InvalidDataException>(() => new UpdateDownloader(client, directory, _ => New).DownloadAsync(Release(), null, default).GetAwaiter().GetResult());
+                Throws<InvalidDataException>(() => new UpdateDownloader(client, directory, _ => New, verifyPublisher: _ => {}).DownloadAsync(Release(), null, default).GetAwaiter().GetResult());
                 Check(!Directory.EnumerateFileSystemEntries(directory).Any());
             }
         }));

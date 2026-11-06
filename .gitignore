@@ -28,6 +28,10 @@ nuget-packages/
 *.p12
 *.key
 *.pem
+**/.wrangler/
+**/.dev.vars
+**/.dev.vars.*
+support-config.json
 NuGet.Config.user
 
 # Machine-specific runtime state and diagnostics

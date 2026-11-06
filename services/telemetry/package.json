@@ -1,0 +1,7 @@
+{
+  "name": "rmi-optional-error-reporting",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test", "check": "node --check src/index.js" },
+  "engines": { "node": ">=24" }
+}

@@ -3,8 +3,11 @@ using System.Text;
 using System.Text.Json;
 namespace RobloxMultiInstance;
 
+public sealed record PreviewSourceDto(string Id,string Status,DateTime? Updated,string? Url);
+public sealed record PreviewStateDto(bool Supported,PreviewSourceDto[] Sources);
+
 public sealed record AppStateDto(string Version,string HelperVersion,bool HelperInstalled,string SharedNotice, string Readiness = "Unable to verify");
-public sealed record InstanceDto(string Id,string Title,int Pid,string? Username,double? CpuPercent,ulong? WorkingSet,DateTime Started,bool HasWindow);
+public sealed record InstanceDto(string Id,string Title,int Pid,string? Username,double? CpuPercent,ulong? WorkingSet,DateTime Started,bool HasWindow,bool BypassOptimizations=false,string OptimizationStatus="Unmanaged");
 public sealed record InstanceListDto(bool Available,int Unavailable,InstanceDto[] Instances,long Generation=0);
 public sealed record OperationItemDto(string Id,string Outcome,string Code,string Message);
 public sealed record OperationResultDto(string Outcome,string Code,string Message,OperationItemDto[] Items);
@@ -22,7 +25,21 @@ public sealed record HealthDto(string Overall,string HelperVersion,bool? Browser
 public sealed record ActivityRowDto(Guid Id,DateTimeOffset StartedUtc,DateTimeOffset? EndedUtc,long? DurationMs,string Source,string Outcome,string Code,string Message);
 public sealed record ActivityDto(bool Available,ActivityRowDto[] Records);
 public sealed record UpdateDto(string HelperVersion,bool Available,string? Version,string? Title,string? Notes,string? DownloadProblem,bool CanDownload,bool Downloaded,string? ReleasePage=null);
+public sealed record TelemetryDto(bool Enabled,bool Available,bool Configured,int QueuedErrors,string? LastResult);
+public sealed record SupportDto(bool Configured,bool Supported,bool ShowBadge,bool Pending,string Message,bool RobloxConfigured,bool ReceiptAvailable=false);
+public sealed record AccountBatchDto(LaunchBatchResultDto Batch,string LayoutStatus);
 
+public sealed record PerformanceProcessDto(string Id,int Pid,DateTime StartedAt,double? CpuPercent,ulong? WorkingSetBytes,ulong? PrivateWorkingSetBytes,ulong? PrivateCommitBytes,double? ReadBytesPerSecond,double? WriteBytesPerSecond,double UptimeSeconds,string Status);
+public sealed record PerformanceTotalsDto(int ProcessCount,double? CpuPercent,ulong? WorkingSetBytes,ulong? PrivateWorkingSetBytes,ulong? PrivateCommitBytes,double? ReadBytesPerSecond,double? WriteBytesPerSecond);
+public sealed record PerformanceSnapshotDto(long Generation,DateTimeOffset ObservedAt,bool Available,int UnavailableProcesses,PerformanceProcessDto[] Processes,PerformanceTotalsDto Totals);
+public sealed record PerformanceProfileDto(string Id,string Name,string Description,string CpuPriority,int? FpsCap,int? GraphicsQuality,string EcoQos="unchanged",string TextureQuality="unchanged",bool MinimumMsaa=false,bool DisableGrass=false,bool ReducedGeometry=false,bool GraySky=false,string WindowBehavior="unchanged");
+public sealed record PerformanceCapabilityDto(string Key,string Label,string State,string Reason,bool Applied,string Requested,string Effective,string Source);
+public sealed record PerformanceProfilesDto(int Version,bool Available,string SelectedProfileId,PerformanceProfileDto[] Profiles,PerformanceCapabilityDto[] Capabilities,string Revision,bool Enabled=false,bool FocusBoost=true);
+public sealed record OptimizationInstanceDto(string AccountId,int Pid,DateTime StartedAt,string State,string Message,string Requested,string Effective,string LaunchState,bool BypassOptimizations=false);
+public sealed record OptimizationStateDto(bool Enabled,int Applied,int Bypassed,int Unavailable,int Failed,OptimizationInstanceDto[] Instances,string LaunchCompatibility,bool Available=true,string Error="");
+public sealed record PerformanceExportDto(string Json);
+public sealed record PerformanceControlsDto(string Id,bool Available,bool OwnsLease,bool RecoveryRequired,string? Priority,bool? EcoQos,bool OwnsPriority,bool OwnsEcoQos,string Code,string Message);
+public sealed record PerformanceRecoveryDto(bool Succeeded,int Pending,string Message);
 /// <summary>Deterministically generates the page-state TypeScript interfaces from these C# DTOs.</summary>
 public static class BackendContractEmitter
 {

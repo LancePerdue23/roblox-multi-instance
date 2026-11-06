@@ -1,6 +1,8 @@
-param([string]$Artifacts=(Join-Path $PSScriptRoot 'artifacts'),[version]$ExpectedVersion='1.0.0.0')
+param([string]$Artifacts=(Join-Path $PSScriptRoot 'artifacts'),[version]$ExpectedVersion='1.0.0.0',[switch]$RequireSigned)
 $ErrorActionPreference='Stop'
 $taskManifest=Get-Content -LiteralPath (Join-Path $Artifacts 'assets.json') -Raw | ConvertFrom-Json
+if($RequireSigned -and !$taskManifest.Release){throw 'Signed release artifacts required; these are unsigned validation artifacts.'}
+if($taskManifest.Release -and $taskManifest.PublisherCertificateSha256 -notmatch '\A[a-fA-F0-9]{64}\z'){throw 'Signed release publisher fingerprint is missing or malformed.'}
 if($taskManifest.Schema -ne 1 -or @($taskManifest.Assets).Count -ne 2){throw 'Expected exactly two installer editions.'}
 if(@($taskManifest.Assets.Edition | Sort-Object -Unique).Count -ne 2 -or 'Desktop' -notin $taskManifest.Assets.Edition -or 'Helper' -notin $taskManifest.Assets.Edition){throw 'Missing installer edition.'}
 foreach($taskAsset in $taskManifest.Assets) {
@@ -11,6 +13,10 @@ foreach($taskAsset in $taskManifest.Assets) {
     if($taskAsset.Edition -eq 'Helper' -and ($taskAsset.Payload.Path | Where-Object {$_ -match '(^web/|WebView|Presentation|RobloxMultiInstance\.exe)'})){throw 'Helper payload contains desktop files.'}
     if($taskAsset.Protocol -ne 1){throw 'Unsupported helper protocol.'}
     if((Get-Content -LiteralPath ($taskFile+'.sha256') -Raw).Trim() -cne ($taskAsset.Sha256+'  '+$taskAsset.Name)){throw 'Installer checksum sidecar mismatch.'}
+    if($taskManifest.Release){
+        $taskSignature=Get-AuthenticodeSignature -LiteralPath $taskFile
+        if($taskSignature.Status -ne 'Valid' -or !$taskSignature.TimeStamperCertificate -or $taskSignature.SignerCertificate.GetCertHashString([Security.Cryptography.HashAlgorithmName]::SHA256) -ne $taskManifest.PublisherCertificateSha256){throw 'Installer publisher signature or timestamp failed verification.'}
+    }
     $taskProcess=Start-Process -FilePath $taskFile -ArgumentList @('--inspect','--expect-edition',$taskAsset.Edition,'--silent') -PassThru -Wait -WindowStyle Hidden
     if($taskProcess.ExitCode -ne 0){throw "Embedded payload inspection failed: $($taskAsset.Name)"}
     Write-Output "PASS: $($taskAsset.Edition) installer digest, edition, embedded allowlist and payload hashes."

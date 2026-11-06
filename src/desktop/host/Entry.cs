@@ -13,6 +13,14 @@ internal static class Entry
     [STAThread]
     public static int Main(string[] args)
     {
+        int result=Run(args);
+        if(result!=72)return result;
+        // Run has released the single-instance mutex before launching the replacement.
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) {UseShellExecute=false,ArgumentList={"--safe-rendering"}})?.Dispose();return 0; }
+        catch { MessageBox.Show("Restart failed. Reopen the app with --safe-rendering to retry.","Roblox Multi Instance");return 1; }
+    }
+    static int Run(string[] args)
+    {
         if(Array.IndexOf(args,"--launch-notifications")>=0)return RobloxLaunchHelper.LaunchNotificationHost.Run();
         bool updates=Array.IndexOf(args,"--updates")>=0;
         if(Array.IndexOf(args,"--check-updates")>=0)
@@ -30,6 +38,7 @@ internal static class Entry
         string sid = WindowsIdentity.GetCurrent().User!.Value;
         string name = "RobloxMultiInstance-" + sid + "-" + System.Diagnostics.Process.GetCurrentProcess().SessionId;
         if (Array.IndexOf(args, "--smoke") >= 0) name += "-smoke";
+        if(Array.IndexOf(args,"--supporter-preview")>=0)name+="-supporter-preview";
         using var owner = new Mutex(false, @"Local\" + name);
         bool acquired;
         try { acquired = owner.WaitOne(0); } catch (AbandonedMutexException) { acquired = true; }
@@ -42,8 +51,10 @@ internal static class Entry
         using var stop = new CancellationTokenSource();
         try
         {
+            bool safeRendering=Array.IndexOf(args,"--safe-rendering")>=0;
+            if(safeRendering)System.Windows.Media.RenderOptions.ProcessRenderMode=System.Windows.Interop.RenderMode.SoftwareOnly;
             var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
-            var window = new MainWindow(Array.IndexOf(args, "--smoke") >= 0);
+            var window = new MainWindow(Array.IndexOf(args, "--smoke") >= 0,safeRendering,Array.IndexOf(args,"--supporter-preview")>=0);
             if(updates)window.RequestUpdates();
             _ = Task.Run(async () =>
             {
@@ -64,7 +75,7 @@ internal static class Entry
                     catch (IOException) { }
                 }
             });
-            return app.Run(window);
+            int result=app.Run(window);return window.RestartInSafeRendering?72:result;
         }
         finally { stop.Cancel(); owner.ReleaseMutex(); }
     }

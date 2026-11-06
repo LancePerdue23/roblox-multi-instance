@@ -3,7 +3,9 @@ using RobloxMultiInstance;
 using RobloxLaunchHelper;
 using LayoutSettings = RobloxLaunchHelper.LayoutSettings;
 
-if(args.FirstOrDefault()=="--contracts") { Console.Write(BackendContractEmitter.TypeScript());return 0; }
+if(args.FirstOrDefault() is "--policy-fixture" or "--policy-owner") return ProcessPolicyTests.Fixture(args);
+if(args.Length==1&&args[0]=="--contracts") { Console.Write(BackendContractEmitter.TypeScript());return 0; }
+if(args.Any(value=>value is "--policy-fixture" or "--policy-owner")) { Console.Error.WriteLine("Misplaced backend fixture invocation.");return 2; }
 int passed=0;
 string root=Path.Combine(Path.GetTempPath(),"RobloxPreviewTests-"+Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
@@ -16,6 +18,41 @@ async Task Reject(DesktopBackend backend,string cmd,string payload,string name)
 }
 try
 {
+    string gamesRoot=Path.Combine(root,"recent-games-routing");
+    using(var gamesBackend=new DesktopBackend(gamesRoot))
+    using(var library=new GameLibrary(gamesRoot))
+    {
+        async Task<GameCardDto[]> RecentCommand(string command,string payload="{}") =>
+            (GameCardDto[])(await gamesBackend.ExecuteAsync(command,Payload(payload),default))!;
+        Check((await RecentCommand("games.recent")).Length==0&&!Directory.Exists(gamesRoot),"Recent games dispatch reads empty history without creating storage");
+        var card=new GameCardDto("123",null,null,"Fixture game",null,AccountIds:["second","first"],Preset:"Two windows");
+        await library.Remember(card,default);
+        await library.Remember(card with {PlaceId="456"},default);
+        var history=await RecentCommand("games.recent");
+        Check(history.Length==2&&history[1].AccountIds!.SequenceEqual(new[]{"second","first"}),"Recent games dispatch returns persisted cards and ordered batch accounts");
+        Check((await RecentCommand("games.remove","{\"placeId\":\"123\"}")).Single().PlaceId=="456","Remove recent game dispatch preserves the other card");
+        Check((await RecentCommand("games.clear")).Length==0&&(await RecentCommand("games.recent")).Length==0,"Clear recent games dispatch persists empty history");
+    }
+    passed += await PerformanceTests.Run(root);
+    passed += await AutomaticPerformanceTests.Run(root);
+    passed += LaunchSettingsTests.Run(root);
+    passed += await ProcessPolicyTests.Run(root);
+    string cleanupRoot=Path.Combine(root,"cleanup-preferences");
+    async Task<bool> CleanupEnabled(DesktopBackend backend) => JsonSerializer.SerializeToElement(await backend.ExecuteAsync("background.status",Payload(),default)).GetProperty("enabled").GetBoolean();
+    using(var cleanupBackend=new DesktopBackend(cleanupRoot))
+    {
+        Check(await CleanupEnabled(cleanupBackend),"Background cleanup defaults enabled without starting a live monitor in fixture storage");
+        await Reject(cleanupBackend,"background.set","{}","Cleanup setting requires an explicit boolean");
+        await cleanupBackend.ExecuteAsync("background.set",Payload("{\"enabled\":false}"),default);
+    }
+    using(var cleanupBackend=new DesktopBackend(cleanupRoot))
+    {
+        Check(!await CleanupEnabled(cleanupBackend),"Disabled cleanup survives restart");
+        await cleanupBackend.ExecuteAsync("background.set",Payload("{\"enabled\":true}"),default);
+        await cleanupBackend.StopBackgroundCleanupAsync();
+    }
+    using(var cleanupBackend=new DesktopBackend(cleanupRoot))
+        Check(await CleanupEnabled(cleanupBackend),"Host shutdown preserves enabled cleanup preference");
     string migrationSource=Path.Combine(root,"migration-source"),migrationDestination=Path.Combine(root,"migration-destination");
     Directory.CreateDirectory(migrationSource);
     File.WriteAllText(Path.Combine(migrationSource,"appearance.json"),"{\"Version\":1,\"Scheme\":4}");
@@ -32,8 +69,30 @@ try
     using(var backend=new DesktopBackend(root))
     {
         var state=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("app.state",Payload(),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        Check(state.GetProperty("version").GetString()=="1.0.0","Primary desktop identity");
+        Check(state.GetProperty("version").GetString()==typeof(DesktopBackend).Assembly.GetName().Version!.ToString(3),"Primary desktop identity");
         Check(!Directory.EnumerateFiles(root).Any(),"Read-only startup creates no preferences");
+        var privacy=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("telemetry.get",Payload(),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Check(!privacy.GetProperty("enabled").GetBoolean(),"Reporting defaults off in injected storage");
+        var support=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("support.get",Payload(),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Check(!support.GetProperty("supported").GetBoolean(),"No supporter badge without a verified receipt");
+        var accounts=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("accounts.state",Payload(),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Check(!accounts.GetProperty("launchAvailable").GetBoolean(),"Live account launch remains gated on acceptance");
+        Check(!Directory.Exists(Path.Combine(root,"privacy"))&&!Directory.Exists(Path.Combine(root,"accounts"))&&!File.Exists(Path.Combine(root,"support-preferences.json")),"Read-only feature startup writes no files");
+        await Reject(backend,"telemetry.set","{}","Reporting changes require an explicit boolean");
+        await Reject(backend,"support.remove","{}","Removing receipt requires confirmation");
+        await Reject(backend,"accounts.remove","{}","Removing local session requires confirmation");
+        await Reject(backend,"accounts.connect","{}","Missing native sign-in delegate cannot collect credentials");
+        var signInStarted=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var signInClosed=new TaskCompletionSource<AccountIdentity?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.AccountSignIn=(_,_)=>{signInStarted.SetResult();return signInClosed.Task;};
+        var connecting=backend.ExecuteAsync("accounts.connect",Payload(),default);
+        await signInStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        try { await backend.ExecuteAsync("settings.get",Payload(),default).WaitAsync(TimeSpan.FromSeconds(2));Check(true,"Open account sign-in does not retain the shared settings gate"); }
+        finally {signInClosed.TrySetResult(null);await connecting;backend.AccountSignIn=null;}
+        backend.AccountSignIn=(_,_)=>Task.FromResult<AccountIdentity?>(null);
+        await backend.ExecuteAsync("accounts.connect",Payload(),default);backend.AccountSignIn=null;
+        Check(true,"Canceled sign-in permits another sign-in operation");
+        await Reject(backend,"support.setRole","{\"role\":\"Super Supporter\"}","Supporter role cannot be set by a bridge command");
         await Reject(backend,"unknown.command","{}","Unknown commands rejected");
         await Reject(backend,"system.maintenance","{\"action\":\"uninstall\"}","Maintenance requires confirmation");
         await Reject(backend,"settings.notifications","{\"showProgress\":true}","Shared notification writes require confirmation");
@@ -81,9 +140,17 @@ try
     var saved=DesktopBackend.BuildPlan([m],[unavailable,movable],[m.Id,m.Id],ArrangementKind.Saved,null);
     Check(!saved.Valid&&saved.Error!.Contains("All saved-position"),"Saved layouts require every selected slot");
     Check(!DesktopBackend.BuildPlan([],[],[],ArrangementKind.Grid,null).Valid,"No-display layout rejected");
+    var batch=new LaunchBatchResultDto("fixture","Completed",true,"Saved",[new("account-one",1,"Started","OK",1,1),new("account-two",2,"Started","OK",2,2)]);
+    var snapshot=new InstanceSnapshot([new(new(1,1),[new(11,"One")],null,null,false),new(new(2,2),[new(22,"Two")],null,null,false)],0);
+    Check(DesktopBackend.BatchTargets(batch,snapshot)!.Select(t=>t.Window).SequenceEqual(new nint[]{11,22}),"Verified account batch preserves preset slot order");
+    Check(DesktopBackend.BatchTargets(batch,snapshot with {Instances=[snapshot.Instances[0],snapshot.Instances[1] with {Key=new(2,99)}]}) is null,"PID reuse prevents automatic account layouts");
+    Check(DesktopBackend.BatchTargets(batch,snapshot with {Instances=[snapshot.Instances[0]]}) is null,"Missing account window prevents automatic layouts");
+    Check(DesktopBackend.BatchTargets(batch with {CanApplyLayout=false},snapshot) is null,"Partial account batch cannot apply a layout");
+    Check(DesktopBackend.BatchTargets(batch,snapshot with {Instances=[snapshot.Instances[0] with {Windows=[new(11,"One"),new(12,"Ambiguous")]},snapshot.Instances[1]]}) is null,"Ambiguous windows prevent automatic account layouts");
     string contracts=BackendContractEmitter.TypeScript();
     Check(contracts.Contains("export interface InstanceDto")&&contracts.Contains("username: string | null"),"TypeScript contracts generated from nullable C# DTOs");
     Console.WriteLine($"{passed} backend checks passed.");
     return 0;
 }
 finally { Directory.Delete(root,true); }
+

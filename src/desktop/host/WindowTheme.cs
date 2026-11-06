@@ -10,6 +10,8 @@ internal sealed class WindowTheme : IDisposable
 {
     private readonly Window window;
     private string scheme;
+    private bool workspaceReady;
+    internal void SetWorkspaceReady(bool ready) { workspaceReady=ready; if(caption is not null)ApplyFallback(Palette()); }
     public event Action? Changed;
     private System.Windows.Controls.Grid? caption;
     private System.Windows.Controls.Button? maximize;
@@ -44,6 +46,21 @@ internal sealed class WindowTheme : IDisposable
         if(caption is not null)ApplyFallback(p);
         window.Background=new System.Windows.Media.SolidColorBrush(SystemParameters.HighContrast?SystemColors.WindowColor:System.Windows.Media.Color.FromRgb((byte)(background&255),(byte)((background>>8)&255),(byte)((background>>16)&255)));
         Changed?.Invoke();
+    }
+    internal (System.Windows.Media.Brush Background,System.Windows.Media.Brush Surface,System.Windows.Media.Brush Text,System.Windows.Media.Brush Muted,System.Windows.Media.Brush Border,System.Windows.Media.Brush Accent) StartupColors()
+    {
+        if(SystemParameters.HighContrast)return(SystemColors.WindowBrush,SystemColors.WindowBrush,SystemColors.WindowTextBrush,SystemColors.WindowTextBrush,SystemColors.WindowTextBrush,SystemColors.HighlightBrush);
+        var p=Palette();
+        var colors=scheme switch {
+            "WarmNeutral" => (0xfffdf8,0x756b5d,0x795a37),
+            "Purple" => (0x281f36,0xb9a8cd,0xc6a0ff),
+            "Ocean" => (0x19303e,0x9fbfce,0x79cee8),
+            "Forest" => (0x203329,0xa5c0ae,0x91d5a4),
+            "Rose" => (0xfffafd,0x806171,0xa52d65),
+            _ => p.Dark ? (0x1a1e25,0x9ba6b7,0x8dacff) : (0xffffff,0x627086,0x305bcb)
+        };
+        System.Windows.Media.Brush Rgb(int rgb)=>Brush(Color((rgb>>16)&255,(rgb>>8)&255,rgb&255));
+        return(Brush(p.Background),Rgb(colors.Item1),Brush(p.Text),Rgb(colors.Item2),Brush(p.Border),Rgb(colors.Item3));
     }
     public void StyleMenu(System.Windows.Forms.ContextMenuStrip menu)
     {
@@ -85,8 +102,19 @@ internal sealed class WindowTheme : IDisposable
         var buttons=new System.Windows.Controls.StackPanel {Orientation=System.Windows.Controls.Orientation.Horizontal};System.Windows.Controls.Grid.SetColumn(buttons,1);caption.Children.Add(buttons);
         void Add(string text,string name,Action action) {var button=new System.Windows.Controls.Button {Content=text,ToolTip=name,Width=46,Height=36,FontSize=17,Focusable=true,BorderThickness=new Thickness(0),Padding=new Thickness(0)};System.Windows.Automation.AutomationProperties.SetName(button,name);System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(button,true);button.Click+=(_,_)=>action();buttons.Children.Add(button);if(name=="Maximize")maximize=button;}
         Add("−","Minimize",()=>SystemCommands.MinimizeWindow(window));Add("□","Maximize",()=>{if(window.WindowState==WindowState.Maximized)SystemCommands.RestoreWindow(window);else SystemCommands.MaximizeWindow(window);});Add("×","Close",()=>SystemCommands.CloseWindow(window));
-        window.StateChanged+=(_,_)=>{if(maximize is not null){bool restored=window.WindowState!=WindowState.Maximized;maximize.Content=restored?"□":"❐";maximize.ToolTip=restored?"Maximize":"Restore";System.Windows.Automation.AutomationProperties.SetName(maximize,restored?"Maximize":"Restore");}};
+        window.StateChanged+=(_,_)=>{if(maximize is not null){bool restored=window.WindowState!=WindowState.Maximized;maximize.Content=restored?(object)"□":RestoreIcon();maximize.ToolTip=restored?"Maximize":"Restore";System.Windows.Automation.AutomationProperties.SetName(maximize,restored?"Maximize":"Restore");}};
         root.Children.Add(caption);if(body is not null){System.Windows.Controls.Grid.SetRow(body,1);root.Children.Add(body);}window.Content=root;
+    }
+    private static System.Windows.Shapes.Path RestoreIcon()
+    {
+        var icon=new System.Windows.Shapes.Path {
+            Data=System.Windows.Media.Geometry.Parse("M3,2 V0 H11 V8 H9 M0,3 H8 V11 H0 Z"),
+            Width=12,Height=12,StrokeThickness=1,SnapsToDevicePixels=true
+        };
+        icon.SetBinding(System.Windows.Shapes.Shape.StrokeProperty,new System.Windows.Data.Binding("Foreground") {
+            RelativeSource=new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.FindAncestor,typeof(System.Windows.Controls.Button),1)
+        });
+        return icon;
     }
     private static System.Windows.Media.Brush Brush(int value)=>new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb((byte)(value&255),(byte)((value>>8)&255),(byte)((value>>16)&255)));
     private void ApplyFallback((bool Dark,int Background,int Text,int Border) p)
@@ -94,7 +122,8 @@ internal sealed class WindowTheme : IDisposable
         var background=SystemParameters.HighContrast?SystemColors.WindowBrush:Brush(p.Background);
         var foreground=SystemParameters.HighContrast?SystemColors.WindowTextBrush:Brush(p.Text);
         caption!.Background=background;System.Windows.Controls.TextBlock.SetForeground(caption,foreground);
-        sidebarCaption!.Background=SystemParameters.HighContrast?SystemColors.WindowBrush:Brush(scheme=="Purple"?Color(33,26,45):scheme=="Ocean"?Color(20,38,50):scheme=="Forest"?Color(24,40,32):scheme=="Rose"?Color(255,247,249):p.Dark?Color(21,24,29):scheme=="WarmNeutral"?Color(249,246,240):Color(255,255,255));
+        sidebarCaption!.Visibility=workspaceReady?Visibility.Visible:Visibility.Collapsed;
+        sidebarCaption.Background=SystemParameters.HighContrast?SystemColors.WindowBrush:Brush(scheme=="Purple"?Color(33,26,45):scheme=="Ocean"?Color(20,38,50):scheme=="Forest"?Color(24,40,32):scheme=="Rose"?Color(255,247,249):p.Dark?Color(21,24,29):scheme=="WarmNeutral"?Color(249,246,240):Color(255,255,255));
         sidebarCaption.BorderBrush=SystemParameters.HighContrast?SystemColors.WindowTextBrush:Brush(p.Border);
         var buttons=(System.Windows.Controls.StackPanel)caption.Children[2];
         foreach(System.Windows.Controls.Button button in buttons.Children)
@@ -104,7 +133,16 @@ internal sealed class WindowTheme : IDisposable
             var border=new FrameworkElementFactory(typeof(System.Windows.Controls.Border));border.SetValue(System.Windows.Controls.Border.BackgroundProperty,new System.Windows.Data.Binding("Background") {RelativeSource=System.Windows.Data.RelativeSource.TemplatedParent});
             var presenter=new FrameworkElementFactory(typeof(System.Windows.Controls.ContentPresenter));presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty,HorizontalAlignment.Center);presenter.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);border.AppendChild(presenter);style.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty,new System.Windows.Controls.ControlTemplate(typeof(System.Windows.Controls.Button)){VisualTree=border}));
             var hover=new Trigger {Property=UIElement.IsMouseOverProperty,Value=true};hover.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty,SystemParameters.HighContrast?SystemColors.HighlightBrush:close?Brush(Color(196,43,28)):Brush(scheme=="Purple"?Color(53,41,67):scheme=="Ocean"?Color(34,62,79):scheme=="Forest"?Color(43,68,55):scheme=="Rose"?Color(247,230,237):p.Dark?Color(34,40,51):scheme=="WarmNeutral"?Color(240,234,225):Color(220,226,235))));hover.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty,SystemParameters.HighContrast?SystemColors.HighlightTextBrush:close?System.Windows.Media.Brushes.White:foreground));style.Triggers.Add(hover);
-            var focus=new Trigger {Property=UIElement.IsKeyboardFocusedProperty,Value=true};focus.Setters.Add(new Setter(System.Windows.Controls.Control.BackgroundProperty,SystemColors.HighlightBrush));focus.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty,SystemColors.HighlightTextBrush));style.Triggers.Add(focus);button.Style=style;
+            // WPF shows FocusVisualStyle for keyboard navigation only. A focus
+            // background trigger stays active after mouse clicks (including restore
+            // and close-to-tray), making caption buttons appear stuck down.
+            var focusBorder=new FrameworkElementFactory(typeof(System.Windows.Controls.Border));
+            focusBorder.SetValue(System.Windows.Controls.Border.BorderBrushProperty,SystemColors.HighlightBrush);
+            focusBorder.SetValue(System.Windows.Controls.Border.BorderThicknessProperty,new Thickness(1));
+            focusBorder.SetValue(FrameworkElement.MarginProperty,new Thickness(4));
+            var focusStyle=new Style(typeof(System.Windows.Controls.Control));
+            focusStyle.Setters.Add(new Setter(System.Windows.Controls.Control.TemplateProperty,new System.Windows.Controls.ControlTemplate(typeof(System.Windows.Controls.Control)){VisualTree=focusBorder}));
+            style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,focusStyle));button.Style=style;
         }
     }
     public async System.Threading.Tasks.Task CheckCaptionControlsAsync()
@@ -121,6 +159,20 @@ internal sealed class WindowTheme : IDisposable
         await System.Threading.Tasks.Task.Delay(150);
         if(window.WindowState!=WindowState.Minimized)throw new InvalidOperationException("Minimize did not respond.");
         SystemCommands.RestoreWindow(window);await System.Threading.Tasks.Task.Delay(150);
+        foreach(System.Windows.Controls.Button button in buttons.Children)
+        {
+            // Mouse clicks leave focus on the button too. Retained focus must not
+            // replace its normal colors with a permanent pressed-looking fill.
+            if(button.Focus()&&!button.IsMouseOver)
+            {
+                window.UpdateLayout();
+                var expected=SystemParameters.HighContrast?SystemColors.WindowBrush:Brush(Palette().Background);
+                if(button.Background is not System.Windows.Media.SolidColorBrush actual || actual.Color!=((System.Windows.Media.SolidColorBrush)expected).Color)
+                    throw new InvalidOperationException("Caption focus left a stuck highlight.");
+            }
+            if(button.FocusVisualStyle is null)throw new InvalidOperationException("Caption keyboard focus indicator is missing.");
+        }
+        System.Windows.Input.Keyboard.ClearFocus();
     }
     public void CaptureCaption(string path)
     {

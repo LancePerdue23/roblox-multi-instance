@@ -4,6 +4,14 @@ describe('desktop bridge',()=>{
  let receive:(event:{data:unknown})=>void;let sent:Record<string,unknown>[];
  beforeEach(()=>{vi.resetModules();vi.useFakeTimers();sent=[];vi.stubGlobal('window',{chrome:{webview:{postMessage:(message:Record<string,unknown>)=>sent.push(message),addEventListener:(_type:string,handler:typeof receive)=>receive=handler}}});});
  afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();});
+ it('classifies automatic policy activation and account bypass as writes',async()=>{
+  const bridge=await import('./bridge');
+  for(const command of ['performance.activate','accounts.optimizationBypass'])expect(bridge.category(command)).toBe('preferences');
+  expect(bridge.category('performance.optimizationState')).toBe('read');
+  expect(bridge.conflicts('performance.activate',[{id:'maintenance',command:'system.maintenance',category:'maintenance',state:'Running',cancelable:false}])).toBe(true);
+ });
+ it('classifies performance writes as preferences and preview/export as reads',async()=>{const bridge=await import('./bridge');expect(bridge.category('performance.saveProfiles')).toBe('preferences');expect(bridge.category('performance.import')).toBe('preferences');expect(bridge.category('performance.previewImport')).toBe('read');expect(bridge.category('performance.export')).toBe('read');for(const command of ['performance.applyControls','performance.resetControls','performance.recoverControls']){expect(bridge.category(command)).toBe('windows');expect(bridge.conflicts(command,[{id:'batch',command:'accounts.launchBatch',category:'launch',state:'Running',cancelable:true}])).toBe(true);}expect(bridge.category('performance.controls')).toBe('read');expect(bridge.conflicts('performance.import',[{id:'x',command:'settings.save',category:'preferences',state:'Running',cancelable:false}])).toBe(true);});
+ it('classifies account organization mutations as preferences',async()=>{const bridge=await import('./bridge');expect(bridge.category('accounts.organize')).toBe('preferences');expect(bridge.category('accounts.order')).toBe('preferences');});
  it('matches responses by ID and ignores unsupported protocol and late responses',async()=>{const bridge=await import('./bridge');const a=bridge.request('instances.list'),b=bridge.request('settings.get');receive({data:{version:9,id:sent[0].id,data:'wrong'}});receive({data:{version:1,id:sent[1].id,data:'settings'}});receive({data:{version:1,id:sent[0].id,data:'instances'}});expect(await a).toBe('instances');expect(await b).toBe('settings');expect(()=>receive({data:{version:1,id:sent[0].id,data:'late'}})).not.toThrow();});
  it('propagates safe host errors',async()=>{const bridge=await import('./bridge');const pending=bridge.request('launch');receive({data:{version:1,id:sent[0].id,error:{code:'helper-missing',message:'Install the helper first.'}}});await expect(pending).rejects.toThrow('Install the helper first.');});
  it('rejects an unavailable desktop connection',async()=>{vi.stubGlobal('window',{});const bridge=await import('./bridge');await expect(bridge.request('launch')).rejects.toThrow('Browser previews cannot control Roblox');});
@@ -32,5 +40,12 @@ describe('desktop bridge',()=>{
  it('keeps unsuccessful completed outcomes separate from transport errors',async()=>{
   const bridge=await import('./bridge');const action=bridge.request('instances.close');receive({data:{version:1,id:sent[0].id,data:{outcome:'Failed',code:'CLOSE_FAILED',message:'Could not request close.'}}});
   await expect(action).resolves.toMatchObject({outcome:'Failed'});
+ });
+ it('blocks window changes during an account batch while allowing discovery and canceling that batch',async()=>{
+  const bridge=await import('./bridge');const controller=new AbortController();const batch=bridge.request('accounts.launchBatch',{ids:['local-account']},{signal:controller.signal});
+  expect(bridge.conflicts('layouts.apply')).toBe(true);expect(bridge.conflicts('launch')).toBe(true);expect(bridge.conflicts('accounts.state')).toBe(false);
+  controller.abort();expect(sent[1]).toMatchObject({command:'cancel',payload:{operationId:sent[0].id}});
+  receive({data:{version:1,id:sent[1].id,data:{canceled:true}}});receive({data:{version:1,id:sent[0].id,data:{}}});await batch;
+  expect(bridge.conflicts('layouts.apply')).toBe(false);
  });
 });

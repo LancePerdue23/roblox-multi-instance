@@ -1,2 +1,3 @@
 import { defineConfig } from 'vite';
-export default defineConfig({base:'./',build:{outDir:'dist',emptyOutDir:true}});
+import {execFileSync} from 'node:child_process';
+export default defineConfig(({mode})=>{const localPreview=mode==='local-supporters';let identity='';if(localPreview){let revision='unknown';try{revision=execFileSync('git',['describe','--always','--dirty'],{encoding:'utf8'}).trim();}catch{}identity=JSON.stringify({builtAt:new Date().toISOString(),revision});}return {base:'./',define:{__LOCAL_BUILD_IDENTITY__:JSON.stringify(identity),__LOCAL_SUPPORTER_PREVIEW__:JSON.stringify(localPreview)},plugins:[{name:'local-preview-marker',generateBundle(){if(localPreview)this.emitFile({type:'asset',fileName:'local-supporter-preview.json',source:JSON.stringify({localOnly:true})});}}],build:{outDir:'dist',emptyOutDir:true}};});

@@ -8,6 +8,16 @@ internal static class ReliabilityTests
     static void Reject(Action action){try{action();throw new Exception("Unexpected success.");}catch(InvalidOperationException){}catch(InvalidDataException){}}
     internal static void Run(Action<string,Action> run)
     {
+        run("Interactive CLI actions use valid commands and human output handles empty and nested results",()=>{
+            foreach(var action in TerminalMenu.Actions)
+            {
+                var command=action.Command.ToList();
+                Terminal.ValidateArguments(command.ToArray());
+                Check(!command.Contains("--yes"));
+            }
+            string text=TerminalMenu.Format(new { browserIntegration=true, records=Array.Empty<string>(), health=new { message="Ready", problem=(string?)null } });
+            Check(text.Contains("Browser Integration: True")&&text.Contains("None")&&text.Contains("Message: Ready")&&text.Contains("Problem: Unavailable"));
+        });
         run("Operation outcomes preserve legacy uncertainty, elevation cancellation, focus denial and requested close",()=>{
             Check(OperationResult.FromExit(1,true).Outcome==OperationOutcome.Unknown);
             Check(OperationResult.FromExit(1223).Outcome==OperationOutcome.Canceled);
@@ -31,6 +41,8 @@ internal static class ReliabilityTests
                 using var window=coordinator.Enter("layouts.apply");Reject(()=>coordinator.Enter("instances.close"));
             }
             using(var maintenance=coordinator.Enter("system.maintenance")){Reject(()=>coordinator.Enter("settings.save"));Reject(()=>coordinator.Enter("launch"));using var read=coordinator.Enter("app.state");}
+            using(var batch=coordinator.Enter("accounts.launchBatch")){Reject(()=>coordinator.Enter("layouts.apply"));Reject(()=>coordinator.Enter("launch"));using var read=coordinator.Enter("accounts.state");}
+            using(var windows=coordinator.Enter("layouts.apply")){Reject(()=>coordinator.Enter("accounts.launchBatch"));}
             using var final=coordinator.Enter("launch");
         });
         run("Readiness distinguishes installed untested ready repair incompatible and unknown without a worker launch",()=>{

@@ -1,5 +1,7 @@
 # Distribution implementation and acceptance
 
+Performance now has explicit global live presets, persistent account exemptions, and a background policy coordinator. FPS and graphics requests remain gated; fixture transaction tests do not establish live Roblox behavior or RAM savings. See [performance implementation and acceptance](performance-optimizations.md) before enabling launch-time settings.
+
 The desktop and helper editions have installers published as separate private validation prereleases. Live Windows acceptance and stable production release remain pending.
 
 The full app + helper release is v1.0.0; the helper-only release is helper-v1.0.0. Both contain product version 1.0.0 and are marked prerelease, not Latest. See [release notes and acceptance gate](releases/v1.0.0.md). Unpublished development builds numbered 1.0.1 or 1.1.0 must be explicitly uninstalled before installing 1.0.0; numeric downgrade protection is retained for modern and legacy installs. The owner subsequently authorized separate releases followed by testing; stable promotion remains gated on manual acceptance. Keep the repository private.
@@ -41,3 +43,19 @@ Updates select the setup asset for the installed edition, retain verified staged
 Use a disposable Windows account to test both editions: fresh install, legacy upgrade, normal-user worker verification, ambiguous/missing/signed player selection, canceled elevation, protocol ownership conflicts and restoration, repair/recovery, uninstall with retained and removed data, retained-data reinstall, edition switching, interrupted setup, locked payloads, and real update handoff. Confirm no helper remains resident while idle and inspect shortcut/PATH/uninstall ownership behavior.
 
 Separately verify two accounts remaining in-game, monitor/DPI placement, OS theme changes, and screen-reader behavior. Fixture results do not establish these outcomes. Do not publish or describe these packages as production accepted until this matrix has been completed.
+
+## November 5 workspace polish
+
+Preview privacy, fit and density now persist in the desktop web profile. This is preview-grid privacy, not a global streamer mode. Failed/stale cards expose Retry, which restarts the visible capture subscription without touching Roblox processes. Saved performance profiles can explicitly apply their saved CPU priority to one selected process through the existing frozen confirmation, native lifetime validation and owned-setting reset path. FPS/graphics remain unapplied preferences; EcoQoS remains manual.
+
+The machine-local supporter build also displays its build time and source revision. Public frontend compilation removes that metadata and label; the public-build browser check asserts their exclusion. Packaging continues to reject local preview assets.
+
+Publisher-authenticated update signing and the manual Windows acceptance matrix above remain open. These UI changes do not supply a publisher signing identity, establish live game compatibility or authorize installation/publication.
+
+## November 5 signing and profile follow-up
+
+Publisher signing support and compiled signer pin checks are implemented; see [publisher-signing.md](publisher-signing.md). Unsigned private validation packaging remains available, while `Package.ps1 -Release` requires a real signing identity. `Test-Distribution.ps1 -RequireSigned` refuses unsigned validation artifacts. No signing identity exists yet, so this is not a signed or production-accepted release.
+
+Saved profiles now include optional EcoQoS (older files default to unchanged), with explicit apply through the existing process confirmation/reset path. CPU priority and EcoQoS requests are applied only where supported. FPS/graphics requests remain unapplied until a client integration has been verified.
+
+The [isolated acceptance checklist](releases/windows-acceptance.md) is prepared and remains Not run; the owner has no isolated Windows environment yet.

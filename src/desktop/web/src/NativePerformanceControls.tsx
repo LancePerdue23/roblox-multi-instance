@@ -1,0 +1,43 @@
+import {useEffect,useId,useRef,useState} from 'react';
+import {request} from './bridge';
+import {ThemedSelect} from './ThemedSelect';
+import type {PerformanceControlsDto,PerformanceProcessDto,PerformanceRecoveryDto,PerformanceProfileDto} from './backend.generated';
+
+type Intent={kind:'apply'|'reset'|'recover';id?:string;pid?:number;priority:string;ecoQos:string};
+export function NativePerformanceControls({process,busy,profile}:{process?:PerformanceProcessDto;busy:boolean;profile?:PerformanceProfileDto}){
+ const [state,setState]=useState<PerformanceControlsDto>();const [priority,setPriority]=useState('unchanged');const [ecoQos,setEcoQos]=useState('unchanged');const [working,setWorking]=useState(false);const [error,setError]=useState('');const [message,setMessage]=useState('');const [intent,setIntent]=useState<Intent>();
+ const mounted=useRef(true);const sequence=useRef(0);const dialog=useRef<HTMLDialogElement>(null);const focus=useRef<HTMLElement|null>(null);const title=useId();
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;sequence.current++;};},[]);
+ async function refresh(){
+  const epoch=++sequence.current;if(!process){setState(undefined);setMessage('');setError('');setWorking(false);setIntent(undefined);return;}setError('');setWorking(true);
+  try{const value=await request<PerformanceControlsDto>('performance.controls',{id:process.id});if(mounted.current&&epoch===sequence.current){setState(value);if(value.ecoQos===null)setEcoQos('unchanged');setMessage(value.message);}}
+  catch(e){if(mounted.current&&epoch===sequence.current){setState(undefined);setMessage('');setError(e instanceof Error?e.message:'Process settings could not be read.');}}
+  finally{if(mounted.current&&epoch===sequence.current)setWorking(false);}
+ }
+ useEffect(()=>{setState(undefined);setIntent(undefined);void refresh();},[process?.id]);
+ function openIntent(kind:Intent['kind']){setIntent({kind,id:process?.id,pid:process?.pid,priority,ecoQos});}
+ useEffect(()=>{if(intent){focus.current=document.activeElement as HTMLElement;dialog.current?.showModal();}else{dialog.current?.close();focus.current?.focus();}},[intent]);
+ async function confirm(){
+  const chosen=intent;if(!chosen)return;setIntent(undefined);if(chosen.kind!=='recover'&&(!chosen.id||chosen.id!==process?.id)){setError('The selected process changed. Review its settings before trying again.');return;}setWorking(true);setError('');setMessage('');const epoch=++sequence.current;
+  try{
+   if(chosen.kind==='recover'){
+    const result=await request<PerformanceRecoveryDto>('performance.recoverControls',{confirmed:true});
+    if(mounted.current)await refresh();
+    if(mounted.current){setMessage(result.message+` Pending changes: ${result.pending}.`);if(!result.succeeded)setError(result.message);}
+   }else{
+    const result=await request<PerformanceControlsDto>(chosen.kind==='apply'?'performance.applyControls':'performance.resetControls',{id:chosen.id,...(chosen.kind==='apply'?{priority:chosen.priority,ecoQos:chosen.ecoQos}:{}),confirmed:true});
+    if(mounted.current&&epoch===sequence.current){setState(result);if(result.ownsPriority)setPriority('unchanged');if(result.ownsEcoQos)setEcoQos('unchanged');if(result.code==='APPLIED'||result.code==='RESET')setMessage(result.message);else{setError(result.message);setMessage('');}}
+   }
+  }catch(e){if(mounted.current&&epoch===sequence.current)setError(e instanceof Error?e.message:'The process setting operation failed.');}
+  finally{if(mounted.current&&epoch===sequence.current)setWorking(false);}
+ }
+ const disabled=busy||working;const unavailable=!process||!state?.available;
+ const summary=intent?.kind==='apply'?`Apply priority ${intent?.priority} and EcoQoS ${intent?.ecoQos} to PID ${intent?.pid}? Windows rechecks this exact process before making each change. Results can be partial or refused.`:intent?.kind==='reset'?`Restore settings owned by this manager for PID ${intent?.pid}? Settings changed by another tool are preserved.`:'Try to restore settings left by an interrupted manager? Recovery checks the original process lifetime and preserves settings changed by other tools. It may remain pending if access is denied or another manager is active.';
+ return <section className="card"><div className="card-heading"><div><h2>Manual process controls</h2><p>Change one verified Roblox process. Select its PID in the measurements table. Apply a saved profile’s supported priority and EcoQoS settings or choose manual controls.</p></div><button disabled={disabled||!process} onClick={()=>void refresh()}>Refresh process settings</button></div><div className="padded stack">
+  {!process?<p>Select an available Roblox process to inspect its settings.</p>:<><p><strong>PID {process.pid}</strong> · Account identity is unverified. These controls apply only to this process lifetime.</p>{!state&&!error&&<p>Reading process settings…</p>}{state&&<><div className="performance-overview"><div><span>Observed priority</span><strong>{state.priority??'Unavailable'}</strong><small>{state.ownsPriority?'Owned by this manager':'Not owned by this manager'}</small></div><div><span>Observed EcoQoS</span><strong>{state.ecoQos===null?'Unavailable':state.ecoQos?'On':'Off'}</strong><small>{state.ownsEcoQos?'Owned by this manager':'Not owned by this manager'}</small></div><div><span>Policy ownership</span><strong>{state.ownsLease?'This manager':'Not owned'}</strong></div></div><p className="muted">Observed values reflect the last settings check. Refresh to detect changes made by another tool.</p>{state.recoveryRequired&&<p className="notice">Interrupted changes need recovery before new settings can be applied.</p>}{(state.ownsPriority||state.ownsEcoQos)&&<p className="notice">Reset owned settings before changing that control again. You can still change a control this manager does not own.</p>}<div className="feature-form"><label>Manual CPU priority<ThemedSelect label="Manual CPU priority" value={priority} onChange={setPriority} disabled={disabled||unavailable||state.recoveryRequired||state.ownsPriority} options={[{value:'unchanged',label:'Leave unchanged'},{value:'normal',label:'Normal'},{value:'belowNormal',label:'Below normal'},{value:'idle',label:'Idle'}]}/></label><label>Manual EcoQoS<ThemedSelect label="Manual EcoQoS" value={ecoQos} onChange={setEcoQos} disabled={disabled||unavailable||state.recoveryRequired||state.ecoQos===null||state.ownsEcoQos} options={[{value:'unchanged',label:'Leave unchanged'},{value:'on',label:'On'},{value:'off',label:'Off'}]}/></label></div><div className="button-row">{profile&&<button disabled={disabled||unavailable||state.recoveryRequired||(profile.cpuPriority!=='unchanged'&&state.ownsPriority)||((profile.ecoQos??'unchanged')!=='unchanged'&&(state.ownsEcoQos||state.ecoQos===null))||(profile.cpuPriority==='unchanged'&&(profile.ecoQos??'unchanged')==='unchanged')} onClick={()=>setIntent({kind:'apply',id:process.id,pid:process.pid,priority:profile.cpuPriority,ecoQos:profile.ecoQos??'unchanged'})}>Apply {profile.name} settings…</button>}<button className="primary" disabled={disabled||unavailable||state.recoveryRequired||(priority==='unchanged'&&ecoQos==='unchanged')} onClick={()=>openIntent('apply')}>Apply to selected process…</button><button disabled={disabled||!state.ownsPriority&&!state.ownsEcoQos} onClick={()=>openIntent('reset')}>Reset owned settings…</button></div></>}</>}
+  {error&&<p role="alert" className="notice error">{error}</p>}{message&&<p role="status">{message}</p>}
+  {profile&&<p className="muted">Profile application changes CPU priority and EcoQoS only when requested and supported. FPS and graphics requests are not applied.</p>}
+  <p className="muted">EcoQoS can reduce performance and responsiveness. CPU budgets, affinity and memory trimming are unavailable. Automatic account policies are unavailable. The manager attempts to restore its owned settings on reset and clean exit; after a crash, restoration needs a recovery owner and may remain pending.</p><div><button disabled={disabled} onClick={()=>openIntent('recover')}>Recover interrupted settings…</button></div>
+  <dialog ref={dialog} aria-labelledby={title} onCancel={event=>{event.preventDefault();setIntent(undefined);}}><h2 id={title}>{intent?.kind==='apply'?'Apply process settings':intent?.kind==='reset'?'Reset owned settings':'Recover interrupted settings'}</h2><p>{summary}</p><div className="dialog-actions"><button autoFocus onClick={()=>setIntent(undefined)}>Cancel</button><button className="primary" onClick={()=>void confirm()}>{intent?.kind==='apply'?'Apply process settings':intent?.kind==='reset'?'Reset owned settings':'Recover settings'}</button></div></dialog>
+ </div></section>;
+}

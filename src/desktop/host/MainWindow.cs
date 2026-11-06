@@ -16,10 +16,27 @@ namespace RobloxMultiInstance.Desktop;
 
 internal sealed partial class MainWindow : Window
 {
-    private readonly WebView2 view = new();
+    private WebView2 view = new();
+    // Keep the window body stable while WindowTheme wraps it with caption chrome.
+    // SourceInitialized can raise Loaded while that wrapper is being assembled.
+    private readonly ContentControl body = new();
+    private readonly StartupReadinessPolicy startup = new();
+    private TaskCompletionSource rendererReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly bool safeRendering;
+    public bool RestartInSafeRendering { get; private set; }
     private readonly WindowTheme windowTheme;
     private readonly System.Drawing.Icon trayIcon = LoadTrayIcon();
     private readonly IDesktopBackend backend;
+    private readonly PreviewGridService previews;
+    private bool sessionLocked;
+    private void OnSessionSwitch(object sender,Microsoft.Win32.SessionSwitchEventArgs args)
+    {
+        Dispatcher.BeginInvoke(()=>{
+            if(args.Reason is Microsoft.Win32.SessionSwitchReason.SessionLock or Microsoft.Win32.SessionSwitchReason.RemoteDisconnect or Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect or Microsoft.Win32.SessionSwitchReason.SessionLogoff)sessionLocked=true;
+            else if(args.Reason is Microsoft.Win32.SessionSwitchReason.SessionUnlock or Microsoft.Win32.SessionSwitchReason.RemoteConnect or Microsoft.Win32.SessionSwitchReason.ConsoleConnect or Microsoft.Win32.SessionSwitchReason.SessionLogon)sessionLocked=false;
+            previews.Stop();
+        });
+    }
     private readonly string? isolatedProfile;
     private readonly CancellationTokenSource closed = new();
     private readonly Dictionary<string, CancellationTokenSource> running = new(StringComparer.Ordinal);
@@ -30,6 +47,7 @@ internal sealed partial class MainWindow : Window
     private ShortcutOwner? shortcuts;
     private bool exiting;
     private readonly bool smoke;
+    private readonly bool cosmeticPreview;
     private bool draining, readyToClose;
     private int layoutOperations;
     private TaskCompletionSource idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -40,13 +58,24 @@ internal sealed partial class MainWindow : Window
     private RobloxLaunchHelper.UpdateShutdownRequest? updateShutdown;
     private readonly RobloxLaunchHelper.OperationCoordinator operations = new();
 
-    public MainWindow(bool smoke = false) : this(null, null, smoke) { }
+    public MainWindow(bool smoke = false,bool safeRendering = false,bool cosmeticPreview = false) : this(null, null, smoke,safeRendering,cosmeticPreview) { }
 
-    internal MainWindow(IDesktopBackend? injectedBackend, string? profile, bool smoke = false)
+    internal MainWindow(IDesktopBackend? injectedBackend, string? profile, bool smoke = false,bool safeRendering = false,bool cosmeticPreview = false)
     {
-        this.smoke = smoke;
+        this.smoke = smoke;this.safeRendering=safeRendering;this.cosmeticPreview=cosmeticPreview;
         isolatedProfile = profile;
-        backend = injectedBackend ?? new DesktopBackend(smoke ? Path.Combine(AppContext.BaseDirectory, "smoke-preferences") : null);
+        backend = injectedBackend ?? new DesktopBackend(cosmeticPreview?Path.Combine(AppContext.BaseDirectory,"cosmetic-preview-preferences"):smoke ? Path.Combine(AppContext.BaseDirectory, "smoke-preferences") : null);
+        previews=new(backend,()=>!sessionLocked && IsVisible && WindowState!=WindowState.Minimized && hostReady,
+            data=>Send(new {version=1,@event="previews.frames",data}));
+        previews.Start();
+        IsVisibleChanged+=(_,_)=>{if(!IsVisible)previews.Stop();};
+        StateChanged+=(_,_)=>{if(WindowState==WindowState.Minimized)previews.Stop();};
+        Microsoft.Win32.SystemEvents.SessionSwitch+=OnSessionSwitch;
+        if(backend is DesktopBackend desktopBackend)
+        {
+            desktopBackend.AccountSignIn=(request,token)=>AccountSignInWindow.ShowAsync(this,request,token);
+            desktopBackend.AccountLaunchSession=(account,token)=>AccountLaunchSession.OpenAsync(this,account,token);
+        }
         windowTheme = new WindowTheme(this, backend.AppearanceScheme);
         windowTheme.Changed += () => { if (tray?.ContextMenuStrip is Forms.ContextMenuStrip menu) windowTheme.StyleMenu(menu); };
         Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri("pack://application:,,,/app.ico"));
@@ -55,10 +84,11 @@ internal sealed partial class MainWindow : Window
         var workArea = SystemParameters.WorkArea;
         Width = Math.Min(1440, workArea.Width); Height = Math.Min(960, workArea.Height);
         MinWidth = Math.Min(900, workArea.Width); MinHeight = Math.Min(640, workArea.Height); WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Content = view;
+        body.Content = view;
+        Content = body;
         Loaded += async (_, _) => await InitializeAsync();
         Closing += OnClosing;
-        Closed += (_, _) => { closed.Cancel(); windowTheme.Dispose(); updateShutdown?.Dispose(); shortcuts?.Dispose(); tray?.Dispose(); trayIcon.Dispose(); view.Dispose(); backend.Dispose(); };
+        Closed += (_, _) => { Microsoft.Win32.SystemEvents.SessionSwitch-=OnSessionSwitch;previews.Dispose();startup.Close();closed.Cancel(); windowTheme.Dispose(); updateShutdown?.Dispose(); shortcuts?.Dispose(); tray?.Dispose(); trayIcon.Dispose(); view.Dispose(); backend.Dispose(); };
         backend.Event += (operationId, name, data) =>
         {
             if (!Dispatcher.HasShutdownStarted)
@@ -70,17 +100,49 @@ internal sealed partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
+        if(closed.IsCancellationRequested||!startup.Begin(out int attempt))return;
+        windowTheme.SetWorkspaceReady(false);hostReady=false;rendererReady=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if(attempt>1){view.Dispose();view=new WebView2();}
+        var startupView=view;
+        // HwndHost airspace ignores WPF overlays. Reveal only after renderer readiness.
+        startupView.Visibility=Visibility.Hidden;
+        body.Content=null;var loading=new Grid();loading.Children.Add(view);
+        var splash=new StartupLoadingView(windowTheme,Icon);
+        loading.Children.Add(splash);body.Content=loading;
+        windowTheme.Changed+=splash.RefreshTheme;
         try
         {
-            await RefreshWindowThemeAsync();
+            if(smoke)await Dispatcher.InvokeAsync(()=>splash.Capture(Path.Combine(AppContext.BaseDirectory,"host-loading-smoke.png")),System.Windows.Threading.DispatcherPriority.Render);
+            await StartupReadinessPolicy.RunBoundedAsync(token=>InitializeBrowserAsync(startupView,attempt,token),StartupReadinessPolicy.Deadline,closed.Token);
+            if(startup.Ready(attempt))
+            {
+                loading.Children.Remove(view);body.Content=view;view.Visibility=Visibility.Visible;windowTheme.SetWorkspaceReady(true);hostReady=true;if(openUpdates)RequestUpdates();
+            }
+        }
+        catch(OperationCanceledException) when(closed.IsCancellationRequested) { }
+        catch(WebView2RuntimeNotFoundException) { if(startup.Fail(attempt))ShowStartupFailure("Microsoft Edge WebView2 Runtime is required.",true); }
+        catch(TimeoutException) { if(startup.Fail(attempt))ShowStartupFailure("The desktop interface did not become ready within 20 seconds.",false); }
+        catch { if(startup.Fail(attempt))ShowStartupFailure("The desktop interface could not start. Run the executable from its complete build or installed folder.",false); }
+        finally { windowTheme.Changed-=splash.RefreshTheme; }
+    }
+
+    private async Task InitializeBrowserAsync(WebView2 startupView,int attempt,CancellationToken token)
+    {
+            var readiness=rendererReady;
+            await RefreshWindowThemeAsync();token.ThrowIfCancellationRequested();
             string assets = Path.Combine(AppContext.BaseDirectory, "web");
             if (!File.Exists(Path.Combine(assets, "index.html"))) throw new FileNotFoundException("Bundled interface missing.");
-            string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxMultiInstance", "WebView2");
+            string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxMultiInstance", safeRendering?"WebView2-safe-rendering":"WebView2");
             if (smoke) profile = Path.Combine(AppContext.BaseDirectory, "smoke-profile");
+            if(cosmeticPreview)profile=Path.Combine(AppContext.BaseDirectory,"cosmetic-preview-profile");
             if (isolatedProfile is not null) profile = isolatedProfile;
-            var environment = await CoreWebView2Environment.CreateAsync(null, profile);
-            await view.EnsureCoreWebView2Async(environment);
-            var core = view.CoreWebView2;
+            var options=new CoreWebView2EnvironmentOptions();
+            if(safeRendering)options.AdditionalBrowserArguments="--disable-gpu";
+            var environment = await CoreWebView2Environment.CreateAsync(null, profile,options);
+            token.ThrowIfCancellationRequested();
+            await startupView.EnsureCoreWebView2Async(environment);
+            token.ThrowIfCancellationRequested();
+            var core = startupView.CoreWebView2;
             core.Settings.AreDefaultContextMenusEnabled = false;
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsStatusBarEnabled = false;
@@ -88,17 +150,28 @@ internal sealed partial class MainWindow : Window
             core.Settings.IsGeneralAutofillEnabled = false;
             core.Settings.IsPasswordAutosaveEnabled = false;
             core.SetVirtualHostNameToFolderMapping("desktop.local", assets, CoreWebView2HostResourceAccessKind.DenyCors);
-            core.NavigationStarting += (_, e) => { if (!BridgeProtocol.IsTrusted(e.Uri)) e.Cancel = true; };
+            core.NavigationStarting += (_, e) => { previews.Stop();if (!BridgeProtocol.IsTrusted(e.Uri)) e.Cancel = true; };
+            PreviewResourceRoute.Attach(core,previews,()=>ReferenceEquals(startupView,view));
             core.NewWindowRequested += (_, e) => e.Handled = true;
             core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             core.DownloadStarting += (_, e) => e.Cancel = true;
             core.WebMessageReceived += OnMessage;
+            core.NavigationCompleted+=(_,navigation)=>{if(!navigation.IsSuccess)readiness.TrySetException(new IOException("Local interface navigation failed."));};
+            core.ProcessFailed+=(_,_)=>{if(startup.Fail(attempt)){readiness.TrySetException(new IOException("Desktop browser process stopped."));hostReady=false;ShowStartupFailure("The desktop browser process stopped.",false);}};
             if (smoke) core.NavigationCompleted += async (_, navigation) =>
             {
+                if(!ReferenceEquals(startupView,view)||startup.State is "Failed" or "Closed")return;
                 try
                 {
                     if (!navigation.IsSuccess) throw new IOException("Navigation failed.");
                     await Task.Delay(3000, closed.Token);
+                    if(!ReferenceEquals(startupView,view)||startup.State is "Failed" or "Closed")return;
+                    string launchProfile=Path.Combine(AppContext.BaseDirectory,"smoke-account-launch",Guid.NewGuid().ToString("N"));
+                    AccountStorageSecurity.EnsurePrivateDirectory(launchProfile);
+                    await using(var launchSession=await AccountLaunchSession.OpenAsync(this,new("smoke",launchProfile,"101"),closed.Token))
+                    {
+                        if(launchSession.Cookie is not null)throw new InvalidOperationException("An empty launch profile contained a session.");
+                    }
                     File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "host-theme-smoke.json"), JsonSerializer.Serialize(windowTheme.CheckCaptionColors(), json));
                     await windowTheme.CheckCaptionControlsAsync();
                     windowTheme.CaptureCaption(Path.Combine(AppContext.BaseDirectory, "host-chrome-smoke.png"));
@@ -107,10 +180,10 @@ internal sealed partial class MainWindow : Window
                     File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "host-smoke.txt"), "WebView2 initialized; local navigation completed; screenshot captured. No helper or maintenance action requested.");
                 }
                 catch { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "host-smoke.txt"), "Host smoke failed."); }
-                finally { exiting = true; Close(); }
+                finally { if(ReferenceEquals(startupView,view)&&startup.State is "Starting" or "Ready"){exiting = true; Close();} }
             };
-            updateShutdown=new RobloxLaunchHelper.UpdateShutdownRequest(()=>Dispatcher.InvokeAsync(()=>{exiting=true;Close();}).Task);
-            shortcuts = new ShortcutOwner(this);
+            updateShutdown??=new RobloxLaunchHelper.UpdateShutdownRequest(()=>Dispatcher.InvokeAsync(()=>{exiting=true;Close();}).Task);
+            shortcuts?.Dispose();shortcuts = new ShortcutOwner(this);
             shortcuts.Pressed += async command =>
             {
                 if (handlingShortcut || layoutOperations > 0 || draining) return;
@@ -124,28 +197,38 @@ internal sealed partial class MainWindow : Window
                 catch { }
                 finally { handlingShortcut = false; }
             };
-            core.Navigate(BridgeProtocol.Origin + "/index.html");
-        }
-        catch (WebView2RuntimeNotFoundException)
+            core.Navigate(BridgeProtocol.Origin + "/index.html"+(cosmeticPreview?"?supporter-preview":""));
+            await readiness.Task.WaitAsync(token);
+    }
+
+    private void ShowStartupFailure(string message,bool runtimeMissing)
+    {
+        windowTheme.SetWorkspaceReady(false);
+        hostReady=false;shortcuts?.Dispose();shortcuts=null;view.Dispose();
+        var panel=new StackPanel {Margin=new Thickness(40)};
+        panel.Children.Add(new TextBlock {Text="Desktop startup needs attention",FontSize=24});
+        panel.Children.Add(new TextBlock {Text=message,Margin=new Thickness(0,16,0,16),TextWrapping=TextWrapping.Wrap});
+        panel.Children.Add(new TextBlock {Text="Your settings and account profiles have been preserved. Close and reopen the app if these attempts fail.",TextWrapping=TextWrapping.Wrap});
+        if(runtimeMissing)
         {
-            var panel = new StackPanel { Margin = new Thickness(40) };
-            panel.Children.Add(new TextBlock { Text = "Microsoft Edge WebView2 Runtime is required", FontSize = 24 });
-            panel.Children.Add(new TextBlock { Margin = new Thickness(0, 20, 0, 20), Text = "Install the Evergreen runtime from Microsoft, then reopen Roblox Multi Instance.", TextWrapping = TextWrapping.Wrap });
-            var button = new Button { Content = "Open Microsoft’s runtime download page", Padding = new Thickness(15), HorizontalAlignment = HorizontalAlignment.Left };
-            button.Click += (_, _) => Process.Start(new ProcessStartInfo("https://developer.microsoft.com/microsoft-edge/webview2/") { UseShellExecute = true });
-            panel.Children.Add(button);
-            var retry=new Button {Content="Retry after installing WebView2",Padding=new Thickness(15),Margin=new Thickness(0,12,0,0),HorizontalAlignment=HorizontalAlignment.Left};
-            retry.Click+=async (_,_)=>{retry.IsEnabled=false;Content=view;await InitializeAsync();};panel.Children.Add(retry);Content = panel;
+            var download=new Button {Content="Open Microsoft’s WebView2 download page",Margin=new Thickness(0,12,0,0),Padding=new Thickness(12),HorizontalAlignment=HorizontalAlignment.Left};
+            download.Click+=(_,_)=>{try{Process.Start(new ProcessStartInfo("https://developer.microsoft.com/microsoft-edge/webview2/"){UseShellExecute=true})?.Dispose();}catch{}};panel.Children.Add(download);
         }
-        catch
+        var retry=new Button {Content=$"Retry startup ({startup.Attempts}/{StartupReadinessPolicy.MaximumAttempts} attempts used)",IsEnabled=startup.CanRetry,Margin=new Thickness(0,12,0,0),Padding=new Thickness(12),HorizontalAlignment=HorizontalAlignment.Left};
+        retry.Click+=async (_,_)=>{retry.IsEnabled=false;await InitializeAsync();};panel.Children.Add(retry);
+        if(!safeRendering)
         {
-            Content = new TextBlock { Margin = new Thickness(40), TextWrapping = TextWrapping.Wrap,
-                Text = "The desktop interface could not start. Rebuild using Build.ps1 and run the executable from its complete output folder." };
+            var safe=new Button {Content="Restart with software rendering",Margin=new Thickness(0,12,0,0),Padding=new Thickness(12),HorizontalAlignment=HorizontalAlignment.Left};
+            safe.Click+=(_,_)=>{RestartInSafeRendering=true;exiting=true;Close();};panel.Children.Add(safe);
+            panel.Children.Add(new TextBlock {Text="Software rendering starts a fresh desktop browser profile and may use more CPU. Existing account sign-in profiles stay intact.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,0)});
         }
+        else panel.Children.Add(new TextBlock {Text="Software rendering is already requested. Windows or administrator WebView2 policy can override browser options.",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,12,0,0)});
+        var quit=new Button {Content="Close app",Margin=new Thickness(0,12,0,0),Padding=new Thickness(12),HorizontalAlignment=HorizontalAlignment.Left};quit.Click+=(_,_)=>{exiting=true;Close();};panel.Children.Add(quit);body.Content=panel;
     }
 
     private async void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if(startup.State is not ("Starting" or "Ready")||!ReferenceEquals(sender,view.CoreWebView2))return;
         BridgeRequest request;
         try { request = BridgeProtocol.Parse(e.Source, e.WebMessageAsJson); }
         catch { return; }
@@ -166,12 +249,16 @@ internal sealed partial class MainWindow : Window
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(closed.Token);
         if (running.Count == 0) idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         running.Add(request.Id, cancellation);
-        bool layout = request.Command is "layouts.preview" or "layouts.apply";
+        bool layout = request.Command == "layouts.apply";
+        if(request.Command=="layouts.preview")cancellation.CancelAfter(TimeSpan.FromSeconds(15));
         if (layout) { layoutOperations++; Send(new { version = 1, operationId = request.Id, @event = "host.busy", data = new { busy = true } }); }
         try
         {
             object? data;
-            if (request.Command == "host.tray")
+            if(request.Command=="previews.configure") data=await previews.ConfigureAsync(PreviewConfiguration.Parse(request.Payload));
+            else if(request.Command=="previews.stop") {await previews.StopAsync();data=new {stopped=true};}
+            else if(request.Command=="host.ready") { rendererReady.TrySetResult();data=new {ready=true}; }
+            else if (request.Command == "host.tray")
             {
                 bool enabled = request.Payload.GetProperty("enabled").GetBoolean();
                 SetTray(enabled); data = new { enabled };
@@ -190,6 +277,24 @@ internal sealed partial class MainWindow : Window
                 data = new { enabled = shortcuts?.Enabled == true, conflicts };
             }
             else if (request.Command == "host.state") data = new { tray = tray is not null, shortcuts = shortcuts?.Enabled == true };
+            else if(request.Command is "support.import" or "support.export")
+            {
+                bool importing=request.Command=="support.import";
+                string? receiptPath=null;
+                if(importing)
+                {
+                    var dialog=new Microsoft.Win32.OpenFileDialog { Filter="Supporter receipt (*.rmisupport)|*.rmisupport",CheckFileExists=true,Multiselect=false };
+                    if(dialog.ShowDialog(this)==true)receiptPath=dialog.FileName;
+                }
+                else
+                {
+                    var dialog=new Microsoft.Win32.SaveFileDialog { Filter="Supporter receipt (*.rmisupport)|*.rmisupport",FileName="RobloxMultiInstance-supporter.rmisupport",DefaultExt=".rmisupport",AddExtension=true,OverwritePrompt=true };
+                    if(dialog.ShowDialog(this)==true)receiptPath=dialog.FileName;
+                }
+                data=receiptPath is null
+                    ? await backend.ExecuteAsync("support.get",JsonSerializer.SerializeToElement(new {}),cancellation.Token)
+                    : await backend.ExecuteAsync(importing?"support.importFile":"support.exportFile",JsonSerializer.SerializeToElement(new {path=receiptPath}),cancellation.Token);
+            }
             else if (request.Command == "report.export")
             {
                 if (!request.Payload.TryGetProperty("confirmed", out var confirmed) || confirmed.ValueKind != JsonValueKind.True)
@@ -209,13 +314,13 @@ internal sealed partial class MainWindow : Window
                 }
             }
             Send(new { version = 1, id = request.Id, data });
-            if(request.Command=="host.state"){hostReady=true;if(openUpdates)RequestUpdates();}
             if(data is RobloxMultiInstance.OperationResultDto result && result.Code is "SETUP_HANDOFF" or "UNINSTALL_REQUESTED")_ = Dispatcher.BeginInvoke(()=>{exiting=true;Close();});
         }
         catch (OperationCanceledException) { SendError(request.Id, "canceled", "Operation canceled."); }
         catch (DesktopOperationException ex) { SendError(request.Id, ex.Code, ex.Message); }
         catch (Exception ex)
         {
+            if(ex is not ArgumentException && backend is DesktopBackend desktopBackend)desktopBackend.RecordTechnicalFailure(ex.HResult);
             // Backend supplies safe user-facing errors; never expose arbitrary native exception details.
             string message = ex is ArgumentException ? "The requested action or its options are invalid." : "The action could not complete. Refresh the page or check System health and try again.";
             SendError(request.Id, "operation_failed", message);
@@ -269,16 +374,17 @@ internal sealed partial class MainWindow : Window
         draining = true;
         // Always unwind the first Closing event before attempting the final Close.
         await Task.Yield();
+        await previews.StopAsync();
         closed.Cancel();
         await idle.Task;
-        try { await backend.ExecuteAsync("background.set", JsonSerializer.SerializeToElement(new { enabled = false }), CancellationToken.None); } catch { }
+        try { await backend.StopBackgroundCleanupAsync(); } catch { }
         readyToClose = true;
         Close();
     }
     private void SendError(string id, string code, string message) => Send(new { version = 1, id, error = new { code, message } });
     private void Send(object value)
     {
-        if (!closed.IsCancellationRequested && view.CoreWebView2 is not null)
+        if (!closed.IsCancellationRequested && (startup.State is "Starting" or "Ready") && view.CoreWebView2 is not null)
             view.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(value, json));
     }
 }

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.1 — validation prereleases
+
+- Keep Activity's launch-history table independent of the Instances preview switch.
+- Preserve pending singleton cleanup through temporary bootstrap process gaps instead of canceling the worker after an early startup-exit inference.
+- Remove the unconditional eight-second wait after healthy singleton cleanup; suspected startup failures still receive bounded observation and handoff grace.
+
+- Add an experimental opt-in live client preview grid in Instances, with native window capture, bounded visible subscriptions, pause/privacy controls and validated Focus. Live Roblox and hardware/performance acceptance remain pending.
+
+- Gracefully close a locally replaced game window after a successful launch only when fresh process-owned logs verify a same-account duplicate-login disconnect; preserve unrelated accounts and active/rejoined clients.
+
+- Add default-off installer consent, Privacy settings, bounded technical error summaries, desktop uploads, CLI controls, and a free-tier Worker/D1 ingestion service.
+- Add owner-side GitHub release download counts without app tracking.
+- Add Stripe-hosted one-time contribution service, verified offline cosmetic receipts, and supporter badge controls; service configuration and payment onboarding remain pending.
+- Add isolated local Roblox sign-in, protected session groundwork, game/server target validation, sequential batch coordination, and verified-process layout integration.
+- Keep production account launching explicitly unavailable until real-account authentication and window-correlation acceptance succeeds. No deployment, real payment, or gameplay acceptance is implied.
+- Add native privacy/session/payment fixtures, browser feature journeys, and local Worker tests.
+
 ## 1.0.0 — validation prereleases
 
 - First planned GitHub release: Windows x64 desktop app and on-demand helper editions, both including rmi.exe.
@@ -61,3 +78,4 @@
 
 - Add an on-demand singleton-event worker, launcher, setup, repair, and uninstall.
 - Support browser Play links and a desktop shortcut without a startup watcher.
+

@@ -1,0 +1,9 @@
+# Supporter preview isolation
+
+Normal frontend builds exclude the unrestricted supporter-preview shell and its URL route. Badge previews remain public on the Support page. Unlock replay is enabled only at or below the verified tier (currently base Supporter until higher-tier purchase mapping is implemented). The Vite compile-time flag defaults false; only `npm run build -- --mode local-supporters` includes the unrestricted shell. Normal verified supporters retain palette/animation settings, which do not grant entitlement.
+
+Local preview output carries `local-supporter-preview.json`. Package.ps1 refuses that marker or a local-role-switcher.js payload, including when -SkipFrontend reuses assets. Normal desktop builds remove stale local marker/switcher files before copying normal assets. The ignored local launcher rebuilds preview mode and injects the ignored cosmetic role override into the development output only. Do not distribute the development output as a release; use Package.ps1.
+
+The local override never writes backend receipts, pass ownership, or account state. No username-based or query-string role grant exists. The backend rejects support.setRole. Stripe receipt imports require a trusted signing key and valid signature; Roblox recognition requires a positive configured-pass ownership check.
+
+Security boundary: the existing Roblox offline cache is protected with Windows CurrentUser DPAPI, not signed by a server. A user controlling their Windows account can construct DPAPI-protected data, and a modified client can draw any cosmetic badge. This design prevents accidental preview exposure and ordinary UI/bridge role changes; it does not provide tamper-proof offline entitlement. Strong Roblox entitlement proof would require a server-verified, signed receipt bound to authenticated account identity. No live pass IDs or payment prices are configured yet, and higher-tier purchases remain unwired.

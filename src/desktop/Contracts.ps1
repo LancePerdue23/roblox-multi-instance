@@ -1,7 +1,7 @@
 param([string]$Dotnet = (Join-Path $PSScriptRoot '..\..\.build\sdk\dotnet.exe'), [switch]$Write, [switch]$NoBuild)
 $ErrorActionPreference = 'Stop'
 if (!$NoBuild) {
-    & $Dotnet build (Join-Path $PSScriptRoot 'backend\Tests\Backend.Tests.csproj') -c Release -p:NuGetAudit=false -p:UseSharedCompilation=false --disable-build-servers
+    & $Dotnet build (Join-Path $PSScriptRoot 'backend\Tests\Backend.Tests.csproj') -c Release -m:1 -p:BuildInParallel=false -p:NuGetAudit=false -p:UseSharedCompilation=false --disable-build-servers
     if ($LASTEXITCODE) { throw 'Contract generator build failed.' }
 }
 $taskLines = & $Dotnet (Join-Path $PSScriptRoot 'backend\Tests\bin\Release\net10.0-windows\RobloxMultiInstance.Backend.Tests.dll') --contracts

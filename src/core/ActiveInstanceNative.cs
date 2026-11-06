@@ -21,7 +21,7 @@ internal sealed class InstancePlatform : IInstancePlatform
     public int ProcessorCount => checked((int)InstanceNative.GetActiveProcessorCount(0xffff));
 }
 
-internal sealed class InstanceProcess : IBackgroundClientProcess
+internal sealed class InstanceProcess : IBackgroundClientProcess, IPerformanceProcess
 {
     private readonly SafeProcessHandle handle;
     private readonly int pid;
@@ -52,6 +52,7 @@ internal sealed class InstanceProcess : IBackgroundClientProcess
         var counters = new InstanceNative.MemoryCounters { Size = (uint)Marshal.SizeOf<InstanceNative.MemoryCounters>() };
         return InstanceNative.K32GetProcessMemoryInfo(handle, ref counters, counters.Size) ? (ulong)counters.WorkingSet : null;
     }
+    public PerformanceCounters PerformanceCounters() => PerformanceNative.Read(handle);
     public bool OwnsWindow(nint window) => IsAlive && InstanceNative.EligibleWindow(window, pid);
     public InstanceWindow[] Windows()
     {

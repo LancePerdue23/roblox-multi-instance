@@ -119,14 +119,19 @@ internal sealed class LaunchAttempt : IDisposable
     internal bool PlayerStarted=>result.RobloxStarted==true;
     internal OperationResult ToOperationResult()=>new(result.Outcome switch {LaunchOutcome.Confirmed=>OperationOutcome.Succeeded,LaunchOutcome.Warning=>OperationOutcome.Warning,LaunchOutcome.Failed=>OperationOutcome.Failed,_=>OperationOutcome.Unknown},result.Code.ToString(),DiagnosticMessages.Text(result.Code));
     private readonly DiagnosticHistory history;
+    private readonly TelemetryService? telemetry;
     private readonly LaunchNotificationPublisher publisher;
     private readonly Stopwatch elapsed = Stopwatch.StartNew();
     private LaunchResult result;
     private LaunchOutcome fallbackOutcome = LaunchOutcome.Failed;
     private DiagnosticCode fallbackCode = DiagnosticCode.LaunchFailed;
     private Task<bool>? finished;
-    internal LaunchAttempt(string? uri, DiagnosticHistory? history = null, LaunchNotificationPublisher? publisher = null)
+    private bool telemetrySuppressed;
+    internal void SuppressTelemetry() => telemetrySuppressed = true;
+    internal LaunchAttempt(string? uri, DiagnosticHistory? history = null, LaunchNotificationPublisher? publisher = null, TelemetryService? telemetry = null)
     {
+        // Fixture histories do not enqueue into the actual Windows user's optional reporting store.
+        this.telemetry = telemetry ?? (history is null ? TelemetryService.Default : null);
         this.history = history ?? new(); this.publisher = publisher ?? new();
         using var p = Process.GetCurrentProcess();
         result = new(1, Guid.NewGuid(), DateTimeOffset.UtcNow, null, null,
@@ -154,6 +159,8 @@ internal sealed class LaunchAttempt : IDisposable
         result = result with { EndedUtc = DateTimeOffset.UtcNow < result.StartedUtc ? result.StartedUtc : DateTimeOffset.UtcNow,
             DurationMs = elapsed.ElapsedMilliseconds, RobloxStarted = result.RobloxStarted ?? false };
         history.Finish(result);
+        if (!telemetrySuppressed && result.Outcome is LaunchOutcome.Warning or LaunchOutcome.Failed or LaunchOutcome.Incomplete)
+            telemetry?.Record(result.Code, result.Source, result.ErrorCode);
         return publisher.FinishAsync(LaunchStatus.From(result, 3));
     }
     public void Dispose()

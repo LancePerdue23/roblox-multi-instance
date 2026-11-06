@@ -211,8 +211,10 @@ internal interface IUpdateDownloader
     Task VerifyAsync(string path, UpdateRelease release, CancellationToken token);
 }
 internal sealed class UpdateDownloader(HttpClient client, string staging, Func<string, Version?>? fileVersion = null,
-    Func<string,string,CancellationToken,Task>? inspectSetup = null) : IUpdateDownloader
+    Func<string,string,CancellationToken,Task>? inspectSetup = null, Action<string>? verifyPublisher = null) : IUpdateDownloader
 {
+    private readonly bool requiresConfiguredPublisher = verifyPublisher is null;
+    private readonly Action<string> verifyPublisher = verifyPublisher ?? UpdatePublisherTrust.Verify;
     private readonly Func<string, Version?> fileVersion = fileVersion ?? (path => UpdateVersion.Parse(FileVersionInfo.GetVersionInfo(path).FileVersion));
     private readonly Func<string,string,CancellationToken,Task> inspectSetup = inspectSetup ?? InspectSetupAsync;
     private static async Task InspectSetupAsync(string path,string edition,CancellationToken token)
@@ -226,6 +228,7 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
     }
     public async Task<DownloadedUpdate> DownloadAsync(UpdateRelease release, IProgress<long>? progress, CancellationToken token)
     {
+        if(requiresConfiguredPublisher && !UpdatePublisherTrust.IsConfigured)throw new InvalidDataException(UpdatePublisherTrust.MissingIdentity);
         var asset = release.Asset ?? throw new InvalidOperationException("No verified download is available.");
         if (!UpdateUrls.RepositoryUrl(asset.Url, "/releases/download/") || asset.Size is <= 0 or > UpdateFiles.MaxDownload) throw new InvalidDataException();
         UpdateFiles.EnsureDirectory(staging);
@@ -280,6 +283,8 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, true);
         if (file.Length != asset.Size || !Convert.ToHexString(await SHA256.HashDataAsync(file, token)).Equals(asset.Sha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Download verification failed. Download the update again.");
+        token.ThrowIfCancellationRequested();
+        verifyPublisher(path);
         if (fileVersion(path) != release.Version) throw new InvalidDataException("The downloaded executable version does not match this release.");
         string? edition=asset.Name switch {"RobloxMultiInstance-Setup.exe"=>"Desktop","RobloxLaunchHelper-Setup.exe"=>"Helper",_=>null};
         if(inspect&&edition is not null)await inspectSetup(path,edition,token);

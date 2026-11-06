@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings><Nullable>enable</Nullable>
     <AssemblyName>RobloxMultiInstance</AssemblyName>
@@ -16,5 +17,8 @@
     <ProjectReference Include="../presentation/RobloxMultiInstance.Presentation.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <ProjectReference Include="../backend/RobloxMultiInstance.Backend.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(SupportConfigPath)' != ''">
+    <Content Include="$(SupportConfigPath)" Link="support-config.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

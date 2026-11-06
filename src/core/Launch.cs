@@ -104,18 +104,21 @@ internal static class Launch
 
     internal static async Task<int> RunAsync(string? uri)=>(await RunResultAsync(uri)).ExitCode;
 
-    internal static async Task<OperationResult> RunResultAsync(string? uri,CancellationToken token=default)
+    internal static async Task<OperationResult> RunResultAsync(string? uri,CancellationToken token=default,Action? singletonReady=null,Action<InstanceSnapshot>? beforeStart=null,Action? playerStarted=null,string[]? playerArguments=null,PerformanceLaunchScope? performanceScope=null,PerformanceProfile? performanceProfile=null)
     {
         // Do not write per-user diagnostic data from an elevated launch attempt.
         if (Program.Elevated) throw new UserError("Launch Roblox normally, without Run as administrator. Only setup and the handle helper need administrator access.");
         token.ThrowIfCancellationRequested();
+        using var ownedScope=performanceScope is null?await PerformanceLaunchScope.EnterAsync(token):null;
+        performanceScope??=ownedScope!;
         var edition=Distribution.Installed();
         if(edition is not null&&(UpdateVersion.Parse(edition.Version)!=UpdateVersion.Parse(typeof(Program).Assembly.GetName().Version?.ToString())||UpdateVersion.Parse(System.Diagnostics.FileVersionInfo.GetVersionInfo(Program.InstalledExe).FileVersion)!=UpdateVersion.Parse(edition.Version)))
             return new(OperationOutcome.Failed,"HELPER_VERSION_MISMATCH","The app and helper versions differ. Run the matching setup before launching.");
         using var attempt = new LaunchAttempt(uri);
-        try { return await RunCoreAsync(uri, attempt,token); }
+        try { return await RunCoreAsync(uri, attempt,token,singletonReady,beforeStart,playerStarted,playerArguments,performanceScope,performanceProfile); }
         catch(OperationCanceledException) when(token.IsCancellationRequested)
         {
+            attempt.SuppressTelemetry();
             attempt.Complete(attempt.PlayerStarted?LaunchOutcome.Warning:LaunchOutcome.Failed,attempt.PlayerStarted?DiagnosticCode.CompletionUnconfirmed:DiagnosticCode.LaunchFailed);
             await attempt.FinishAsync();
             return new(attempt.PlayerStarted?OperationOutcome.Unknown:OperationOutcome.Canceled,"OBSERVATION_CANCELED",attempt.PlayerStarted?"Launch observation canceled. Roblox was left running; completion is unknown.":"Launch canceled before starting Roblox.");
@@ -129,7 +132,7 @@ internal static class Launch
         }
     }
 
-    private static async Task<OperationResult> RunCoreAsync(string? uri, LaunchAttempt attempt,CancellationToken token)
+    private static async Task<OperationResult> RunCoreAsync(string? uri, LaunchAttempt attempt,CancellationToken token,Action? singletonReady,Action<InstanceSnapshot>? beforeStart,Action? playerStarted,string[]? playerArguments,PerformanceLaunchScope performanceScope,PerformanceProfile? performanceProfile)
     {
         Log.Write("launch-requested", uri is null ? "desktop" : uri.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) ? "roblox-player" : "roblox", Environment.ProcessId);
         attempt.SetFallback(LaunchOutcome.Failed, DiagnosticCode.InvalidConfig);
@@ -141,6 +144,11 @@ internal static class Launch
         }
         string scheme = uri?.StartsWith("roblox-player:", StringComparison.OrdinalIgnoreCase) != false ? "roblox-player" : "roblox";
         if (!config.Commands.TryGetValue(scheme, out string? command)) command = config.Commands["roblox-player"];
+        // Roblox updates may leave the protected backup pointing at a still-present
+        // obsolete player. Only adopt a current registration if it is itself a signed player.
+        string? currentCommand=Installation.CurrentCommand(scheme);
+        if(PlayerRecovery.Valid(currentCommand))command=currentCommand!;
+        if(playerArguments is not null)command=await ProductionPlayer.ResolveAsync(command,token);
         var start = BuildStart(command, uri);
         if (!File.Exists(start.FileName))
         {
@@ -149,6 +157,11 @@ internal static class Launch
         }
         attempt.SetFallback(LaunchOutcome.Failed, DiagnosticCode.SignatureRejected);
         if (!RobloxTrust.IsSignedRoblox(start.FileName)) throw new UserError("The saved Roblox executable did not pass its Roblox signature check. Repair or reinstall Roblox before trying again.");
+        if(playerArguments is not null)
+        {
+            start.ArgumentList.Clear();
+            foreach(string argument in playerArguments)start.ArgumentList.Add(argument);
+        }
         NamedPipeClientStream? pipe = null;
         string? helperError = null;
         DiagnosticCode warningCode = DiagnosticCode.CompletionUnconfirmed;
@@ -174,9 +187,12 @@ internal static class Launch
                 pipe?.Dispose(); pipe = null;
             }
             attempt.SetFallback(LaunchOutcome.Failed, DiagnosticCode.ProcessStartFailed);
+            beforeStart?.Invoke(baseline);
             token.ThrowIfCancellationRequested();
+            performanceScope.Stage(start.FileName,performanceProfile,token);
             using var game = Process.Start(start) ?? throw new UserError("Roblox could not start. Run Repair.");
             attempt.Started();
+            playerStarted?.Invoke();
             ServicePresentation.AutomaticUpdate?.Invoke();
             attempt.SetFallback(LaunchOutcome.Warning, DiagnosticCode.CompletionUnconfirmed);
             Log.Write("roblox-launched", "", game.Id);
@@ -186,7 +202,9 @@ internal static class Launch
                 try
                 {
                     await Protocol.WriteAsync(pipe, "STARTED", timeout.Token);
-                    return await Protocol.ReadAsync(pipe, timeout.Token);
+                    string result=await Protocol.ReadAsync(pipe, timeout.Token);
+                    if(result=="OK")singletonReady?.Invoke();
+                    return result;
                 }
                 catch (Exception e)
                 {
@@ -228,6 +246,7 @@ internal static class Launch
                 ServicePresentation.Warning?.Invoke(helperError);
             return new(playerExited?OperationOutcome.Failed:OperationOutcome.Warning,warningCode.ToString(),helperError);
         }
+        await ReplacedSessionCleanup.AfterLaunchAsync(baseline,token);
         attempt.Complete(LaunchOutcome.Confirmed, DiagnosticCode.LaunchConfirmed);
         await attempt.FinishAsync();
         return new(OperationOutcome.Succeeded,"LAUNCH_CONFIRMED",DiagnosticMessages.Text(DiagnosticCode.LaunchConfirmed));

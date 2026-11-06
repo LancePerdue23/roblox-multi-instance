@@ -90,9 +90,11 @@ internal static class Entry
         var id=Native.GetIdentity(pid);string[] allowed=[HelperProgram.InstalledExe,Path.Combine(HelperProgram.InstallDirectory,"RobloxMultiInstance.exe"),Path.Combine(HelperProgram.InstallDirectory,"rmi.exe")];
         if(parent.StartTime.ToUniversalTime().Ticks!=created||id.Sid!=HelperProgram.Sid||id.Elevated||id.Session!=Process.GetCurrentProcess().SessionId||!allowed.Contains(id.Image,StringComparer.OrdinalIgnoreCase))return 2;
         using(var file=File.OpenRead(Environment.ProcessPath!)){if(file.Length!=size||!Convert.ToHexString(SHA256.HashData(file)).Equals(args[5],StringComparison.OrdinalIgnoreCase))return 2;}
+        UpdatePublisherTrust.Verify(Environment.ProcessPath!);
         using(var payload=OpenPayload())using(var zip=new ZipArchive(payload,ZipArchiveMode.Read)){var manifest=ReadManifest(zip);Distribution.Validate(manifest);if(UpdateVersion.Parse(manifest.Version)!=version||Distribution.Installed()?.Edition!=manifest.Edition)return 2;}
         using(var ready=EventWaitHandle.OpenExisting(UpdateSetupHandoff.ReadyName(pid,created)))ready.Set();
         if(!parent.WaitForExit(30000))throw new UserError("The previous app has not closed. Close it and retry setup.");
+        UpdatePublisherTrust.Verify(Environment.ProcessPath!);
         UpdateShutdownRequest.CloseManagers();
         var options=args.Skip(6).ToArray();
         if(options.Contains("--silent"))return Elevate(options);
@@ -143,6 +145,7 @@ internal sealed class UninstallForm : Form
 internal sealed class SetupForm : Form
 {
     readonly CheckBox integration=new(){Text="Use helper for browser Play links",Checked=true,AutoSize=true};
+    readonly CheckBox telemetry=new(){Text="Share optional technical error reports",Checked=false,AutoSize=true};
     readonly ComboBox players=new(){DropDownStyle=ComboBoxStyle.DropDownList,Width=650};
     readonly Label status=new(){Text="Setup installs only after you select Install and approve Windows elevation.",AutoSize=true,MaximumSize=new(650,0)};
     readonly Button install=new(){Text="Install",AutoSize=true};
@@ -151,14 +154,23 @@ internal sealed class SetupForm : Form
     internal int Result=1223;
     internal SetupForm(string[] args)
     {
-        this.args=args;Text="Roblox Multi Instance setup";Width=730;Height=380;StartPosition=FormStartPosition.CenterScreen;
+        this.args=args;Text="Roblox Multi Instance setup";Width=730;Height=590;StartPosition=FormStartPosition.CenterScreen;
         var root=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,Padding=new(24),AutoScroll=true};
         using(var stream=Entry.OpenPayload())using(var zip=new ZipArchive(stream,ZipArchiveMode.Read)){var manifest=Entry.ReadManifest(zip);Distribution.Validate(manifest);root.Controls.Add(new Label{Text=(manifest.Edition=="Desktop"?"Roblox Multi Instance + helper":"Roblox Launch Helper")+" "+manifest.Version,AutoSize=true,Font=new Font(Font.FontFamily,16)});}
         bool existing=File.Exists(HelperProgram.ConfigPath);if(existing){try{integration.Checked=Installation.ReadConfig().BrowserIntegrationEnabled;}catch{}integration.Enabled=false;status.Text="Your existing settings, history, and browser integration preference will be preserved.";}
+        telemetry.Checked=TelemetryService.Default.Status().Enabled;telemetry.Enabled=!existing&&!HelperProgram.Elevated;
+        root.Controls.Add(telemetry);root.Controls.Add(new Label{Text=TelemetryService.Disclosure+(existing?" Your current choice is preserved during this upgrade or repair.":HelperProgram.Elevated?" Setup is elevated. Change this preference later from the app or terminal running as your normal Windows user.":""),MaximumSize=new(650,0),AutoSize=true});
         var candidates=PlayerRecovery.InstalledPlayers().Where(p=>PlayerRecovery.Valid($"\"{p}\" \"%1\"")).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();players.Items.AddRange(candidates);if(candidates.Length==1)players.SelectedIndex=0;
         root.Controls.Add(integration);root.Controls.Add(new Label{Text="Official Roblox player (choose when several are found):",AutoSize=true});root.Controls.Add(players);root.Controls.Add(status);
         var row=new FlowLayoutPanel{AutoSize=true};row.Controls.Add(install);var cancel=new Button{Text="Cancel",AutoSize=true};cancel.Click+=(_,_)=>Close();row.Controls.Add(cancel);root.Controls.Add(row);Controls.Add(root);
-        install.Click+=async (_,_)=>{if(running)return;running=true;install.Enabled=false;cancel.Enabled=false;status.Text="Waiting for Windows administrator approval and setup verification…";try{var options=args.ToList();if(!integration.Checked)options.Add("--disable-integration");if(players.SelectedItem is string player){options.Add("--player");options.Add(player);}else if(candidates.Length>1)throw new UserError("Choose an official Roblox player before installing.");Result=await Task.Run(()=>Entry.Elevate(options.ToArray()));status.Text=Result==0?"Installation and normal-user verification completed.":Result==1223?"Administrator approval canceled. Select Retry setup when ready.":"Setup did not complete. Check setup logs and retry.";if(Result==0){cancel.Text="Close";install.Visible=false;}else install.Text="Retry setup";}catch(Exception ex){Result=ex is System.ComponentModel.Win32Exception native&&native.NativeErrorCode==1223?1223:1;status.Text=Result==1223?"Administrator approval canceled. Select Retry setup when ready.":ex is UserError?ex.Message:"Setup could not complete. Check setup logs and retry.";install.Text="Retry setup";}finally{running=false;install.Enabled=true;cancel.Enabled=true;}};
+        install.Click+=async (_,_)=>{if(running)return;running=true;install.Enabled=false;cancel.Enabled=false;status.Text="Waiting for Windows administrator approval and setup verification…";try{var options=args.ToList();if(!integration.Checked)options.Add("--disable-integration");if(players.SelectedItem is string player){options.Add("--player");options.Add(player);}else if(candidates.Length>1)throw new UserError("Choose an official Roblox player before installing.");Result=await Task.Run(()=>Entry.Elevate(options.ToArray()));status.Text=Result==0?"Installation and normal-user verification completed.":Result==1223?"Administrator approval canceled. Select Retry setup when ready.":"Setup did not complete. Check setup logs and retry.";if(Result==0){SaveTelemetryConsent(existing);cancel.Text="Close";install.Visible=false;}else install.Text="Retry setup";}catch(Exception ex){Result=ex is System.ComponentModel.Win32Exception native&&native.NativeErrorCode==1223?1223:1;status.Text=Result==1223?"Administrator approval canceled. Select Retry setup when ready.":ex is UserError?ex.Message:"Setup could not complete. Check setup logs and retry.";install.Text="Retry setup";}finally{running=false;install.Enabled=true;cancel.Enabled=true;}};
         FormClosing+=(_,e)=>{if(running)e.Cancel=true;};
+    }
+    void SaveTelemetryConsent(bool existing)
+    {
+        // Silent/elevated setup and upgrades never infer or replace normal-user consent.
+        if(existing||HelperProgram.Elevated)return;
+        var choice=TelemetryService.Default.SetEnabled(telemetry.Checked);
+        if(!choice.Available)status.Text+=" Optional reporting preference could not be saved. Open Privacy settings to review its current state.";
     }
 }

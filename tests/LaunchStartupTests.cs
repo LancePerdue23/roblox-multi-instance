@@ -43,16 +43,27 @@ internal static class LaunchStartupTests
             Check(!state.Exited(baseline, true, 6900));
             Check(state.Exited(baseline, true, 8900));
         });
-        run("Startup crash ends pending worker wait quickly and cannot be hidden by an early worker OK", () =>
+        run("Startup exit preserves pending singleton cleanup and cannot be hidden by an early worker OK", () =>
         {
-            foreach (Task worker in new[] { new TaskCompletionSource().Task, Task.CompletedTask })
+            foreach (bool pending in new[] {true,false})
             {
                 long time = 0;
-                bool failed = LaunchStartup.ExitedAsync(new([], 0), () => time >= 1000,
+                var completion=new TaskCompletionSource();
+                Task worker=pending?completion.Task:Task.CompletedTask;
+                bool failed = LaunchStartup.ExitedAsync(new([], 0), () => !pending || time >= 1000,
                     _ => Task.FromResult(new InstanceSnapshot([], 0)), worker, default,
-                    () => time, _ => { time += 500; return Task.CompletedTask; }).GetAwaiter().GetResult();
-                Check(failed && time == 3000);
+                    () => time, _ => { time += 500;if(time>=60000)completion.TrySetResult();return Task.CompletedTask; }).GetAwaiter().GetResult();
+                Check(failed && time == (pending?60000:8000));
             }
+        });
+        run("Delayed bootstrap handoff keeps singleton observation alive until the worker completes", () =>
+        {
+            long time=0;var completion=new TaskCompletionSource();
+            var baseline=new InstanceSnapshot([Row(10)],0);
+            bool failed=LaunchStartup.ExitedAsync(baseline,()=>true,
+                _=>Task.FromResult(time<12000?baseline:new InstanceSnapshot([Row(10),Row(20,0)],0)),
+                completion.Task,default,()=>time,_=>{time+=500;if(time>=15000)completion.TrySetResult();return Task.CompletedTask;}).GetAwaiter().GetResult();
+            Check(!failed&&time==15000);
         });
         run("Startup observer accepts healthy handoff, bounds success monitoring and honors cancellation", () =>
         {
@@ -62,7 +73,7 @@ internal static class LaunchStartupTests
                 _ => Task.FromResult(time < 1000 ? baseline : new InstanceSnapshot([Row(10), Row(20, 0)], 0)),
                 Task.CompletedTask, default, () => time,
                 _ => { time += 500; return Task.CompletedTask; }).GetAwaiter().GetResult();
-            Check(!failed && time == 8000);
+            Check(!failed && time == 1000);
             using var canceled = new CancellationTokenSource(); canceled.Cancel();
             try
             {
@@ -74,13 +85,21 @@ internal static class LaunchStartupTests
             Check(!LaunchStartup.ExitedAsync(InstanceSnapshot.Failed, () => throw new Exception("Must not inspect"),
                 _ => throw new Exception("Must not collect"), Task.CompletedTask, default).GetAwaiter().GetResult());
         });
-        run("Startup exit near the monitoring deadline still receives the full handoff grace period", () =>
+        run("Startup exit when the worker completes still receives the full handoff grace period", () =>
         {
             long time = 0;
+            var worker=new TaskCompletionSource();
             bool failed = LaunchStartup.ExitedAsync(new([], 0), () => time >= 7500,
-                _ => Task.FromResult(new InstanceSnapshot([], 0)), Task.CompletedTask, default,
-                () => time, _ => { time += 500; return Task.CompletedTask; }).GetAwaiter().GetResult();
+                _ => Task.FromResult(new InstanceSnapshot([], 0)), worker.Task, default,
+                () => time, _ => { time += 500;if(time>=7500)worker.TrySetResult();return Task.CompletedTask; }).GetAwaiter().GetResult();
             Check(failed && time == 9500);
+        });
+        run("Healthy singleton confirmation has no fixed eight-second success delay",()=>
+        {
+            long time=0;var worker=new TaskCompletionSource();
+            bool failed=LaunchStartup.ExitedAsync(new([],0),()=>false,_=>throw new Exception("A living starter does not need discovery"),worker.Task,default,
+                ()=>time,_=>{time+=500;if(time>=3000)worker.TrySetResult();return Task.CompletedTask;}).GetAwaiter().GetResult();
+            Check(!failed&&time==3000);
         });
         run("Startup exit failure always requests a popup with progress and completion turned off", () =>
         {

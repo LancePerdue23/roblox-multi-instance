@@ -37,10 +37,10 @@ internal sealed class InstanceAccounts(
         cache[key]=(clock().AddSeconds(name is null?10:30),name);
         return name;
     }
-    private static IEnumerable<string> ReadLogs(ProcessKey key,CancellationToken token)
+    internal static IEnumerable<string> ReadLogs(ProcessKey key,CancellationToken token)
     {
         var directory=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Roblox","logs");
-        foreach(var file in OwnedLogs(directory,key,token).Take(4))
+        foreach(var file in OwnedLogs(directory,key,token).DistinctBy(f=>f.FullName,StringComparer.OrdinalIgnoreCase).Take(4))
         {
             string text;
             try

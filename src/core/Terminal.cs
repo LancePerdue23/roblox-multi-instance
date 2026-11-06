@@ -7,6 +7,7 @@ internal static class Terminal
 {
     internal const string Help="""
         rmi — Roblox Multi Instance
+        menu (guided interactive CLI; also opens when rmi runs without arguments in a terminal)
         launch [Roblox URI]
         setup|repair|recover [--installer PATH] [--player PATH] [--disable-integration] [--yes]
         uninstall [--remove-data] [--yes]
@@ -15,6 +16,7 @@ internal static class Terminal
         settings show|reset|set SCHEME [--yes]
         history list|clear|export PATH [--yes]
         report export PATH
+        telemetry status|on|off|clear|send [--yes]
         updates check|download|install [--player PATH] [--yes]
         Global: --json, --help
         Fresh setup enables browser Play integration unless --disable-integration is given.
@@ -22,9 +24,11 @@ internal static class Terminal
         Exit codes: 0 success, 1 failure, 2 usage, 3 warning/partial, 4 unknown, 1223 canceled.
         """;
     static readonly JsonSerializerOptions json=new(){WriteIndented=true,PropertyNamingPolicy=JsonNamingPolicy.CamelCase,Converters={new JsonStringEnumConverter()}};
-    internal static bool ValidCommand(string[] args)=>args.Length>0&&new[]{"launch","setup","repair","recover","uninstall","status","diagnostics","worker-test","integration","settings","history","report","updates"}.Contains(args[0]);
+    internal static bool ValidCommand(string[] args)=>args.Length>0&&new[]{"launch","setup","repair","recover","uninstall","status","diagnostics","worker-test","integration","settings","history","report","updates","telemetry"}.Contains(args[0]);
     internal static async Task<int> RunAsync(string[] args)
     {
+        if(args.Length==1&&args[0]=="menu"||args.Length==0&&!Console.IsInputRedirected&&!Console.IsOutputRedirected)
+            return await TerminalMenu.RunAsync();
         bool machine=args.Contains("--json");args=args.Where(x=>x!="--json").ToArray();
         if(args.Length==0||args.Contains("--help")||args[0]=="help"){Console.Out.WriteLine(Help);return 0;}
         if(!ValidCommand(args)){var invalid=new OperationResult(OperationOutcome.Failed,"INVALID_USAGE","Unknown command. Use rmi --help.");(machine?Console.Out:Console.Error).WriteLine(machine?JsonSerializer.Serialize(invalid,json):invalid.Message);return 2;}
@@ -35,7 +39,7 @@ internal static class Terminal
             object data=await ExecuteAsync(args,cancellation.Token);
             var result=data as OperationResult;
             var output=result?.Outcome is OperationOutcome.Failed or OperationOutcome.Unknown?Console.Error:Console.Out;
-            if(machine)Console.Out.WriteLine(JsonSerializer.Serialize(data,json));else if(result is not null)output.WriteLine(result.Message);else Console.Out.WriteLine(JsonSerializer.Serialize(data,json));
+            if(machine)Console.Out.WriteLine(JsonSerializer.Serialize(data,json));else if(result is not null)output.WriteLine(result.Message);else Console.Out.WriteLine(TerminalMenu.Format(data));
             return result?.ExitCode??0;
         }
         catch(ArgumentException ex){if(machine)Console.Out.WriteLine(JsonSerializer.Serialize(new OperationResult(OperationOutcome.Failed,"INVALID_USAGE",ex.Message),json));else Console.Error.WriteLine(ex.Message+" Use rmi --help.");return 2;}
@@ -96,6 +100,21 @@ internal static class Terminal
             case "report":
                 if(sub!="export"||operands.ElementAtOrDefault(1) is not string reportPath)throw new ArgumentException("Use report export PATH.");
                 var store=new DiagnosticHistory();bool readable=store.Read(out var launches);if(File.Exists(reportPath))throw new ArgumentException("Destination already exists.");DiagnosticReports.Write(Path.GetFullPath(reportPath),DiagnosticReports.Build(DiagnosticChecks.Collect(),launches,readable));return new OperationResult(OperationOutcome.Succeeded,"REPORT_EXPORTED","Troubleshooting report exported.");
+            case "telemetry":
+                var telemetry=TelemetryService.Default;
+                if(sub=="status")return telemetry.Status();
+                if(sub=="off")return RequireTelemetrySaved(telemetry.SetEnabled(false));
+                if(sub=="clear")return RequireTelemetrySaved(telemetry.Clear());
+                if(sub=="on"){Confirm(args,TelemetryService.Disclosure+" Enable optional reporting?");return RequireTelemetrySaved(telemetry.SetEnabled(true));}
+                if(sub=="send"){
+                    var before=telemetry.Status();
+                    if(!before.Enabled)throw new UserError("Optional reporting is off. Enable it explicitly with rmi telemetry on first.");
+                    if(!before.Configured)throw new UserError("This build has no reporting endpoint configured. No summary was sent.");
+                    var sent=await telemetry.SendAsync(token);
+                    if(sent.QueuedErrors>0)return new OperationResult(OperationOutcome.Warning,"TELEMETRY_PENDING",sent.LastResult??"Some errors remain queued.");
+                    return sent;
+                }
+                throw new ArgumentException("Use telemetry status, on, off, clear, or send.");
             case "updates":
                 if(sub is not ("check" or "download" or "install"))throw new ArgumentException("Use updates check, download, or install.");
                 using(var http=UpdateHost.CreateClient())
@@ -122,7 +141,7 @@ internal static class Terminal
         for(int i=1;i<args.Length;i++)
         {
             string value=args[i];if(!value.StartsWith("--")){positional.Add(value);continue;}
-            bool allowed=value switch {"--yes"=>args[0] is "setup" or "repair" or "recover" or "uninstall" or "integration" or "settings" or "history" or "updates","--player"=>args[0] is "setup" or "repair" or "recover" or "updates","--installer" or "--disable-integration"=>args[0] is "setup" or "repair" or "recover","--remove-data"=>args[0]=="uninstall",_=>false};
+            bool allowed=value switch {"--yes"=>args[0] is "setup" or "repair" or "recover" or "uninstall" or "integration" or "settings" or "history" or "updates" or "telemetry","--player"=>args[0] is "setup" or "repair" or "recover" or "updates","--installer" or "--disable-integration"=>args[0] is "setup" or "repair" or "recover","--remove-data"=>args[0]=="uninstall",_=>false};
             if(!allowed||!seen.Add(value))throw new ArgumentException("Unsupported or duplicate option: "+value);
             if(value is "--installer" or "--player"){if(++i>=args.Length||args[i].StartsWith("--"))throw new ArgumentException("Missing value for "+value);}
         }
@@ -131,12 +150,18 @@ internal static class Terminal
             "launch"=>count<=1,
             "setup" or "repair" or "recover" or "uninstall" or "status" or "diagnostics" or "worker-test"=>count==0,
             "integration" or "updates"=>count==1,
+            "telemetry"=>count==1&&positional[0] is "status" or "on" or "off" or "clear" or "send",
             "settings"=>count==1&&positional[0] is "show" or "reset"||count==2&&positional[0]=="set",
             "history"=>count==1&&positional[0] is "list" or "clear"||count==2&&positional[0]=="export",
             "report"=>count==2&&positional[0]=="export",_=>false };
         if(!valid)throw new ArgumentException("Invalid command arguments.");
     }
     static void WriteNew(string path,byte[] bytes){using var file=new FileStream(Path.GetFullPath(path),FileMode.CreateNew,FileAccess.Write,FileShare.None);file.Write(bytes);}
+    static TelemetryStatus RequireTelemetrySaved(TelemetryStatus state)
+    {
+        if(!state.Available)throw new UserError(state.LastResult??"The reporting setting could not be saved. Check telemetry status and retry.");
+        return state;
+    }
     internal static void RemoveUserData()
     {
         string local=Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

@@ -10,7 +10,7 @@ using CheckState = RobloxLaunchHelper.CheckState;
 namespace RobloxMultiInstance;
 
 /// <summary>UI-independent preview facade. Legacy identity is deliberately retained only for shared helper operations.</summary>
-public sealed class DesktopBackend : IDesktopBackend
+public sealed partial class DesktopBackend : IDesktopBackend
 {
     public static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxMultiInstance");
     readonly string migrationWarning = "";
@@ -45,17 +45,39 @@ public sealed class DesktopBackend : IDesktopBackend
     CancellationTokenSource? downloadCancellation;
     bool imported, settingsAvailable = true, planApplied;
     BackgroundClientMonitor? background;
+    readonly bool backgroundMonitoringAllowed;
+    readonly string backgroundPreferencePath;
+    bool backgroundEnabled = true;
     public event Action<string,string,object?>? Event;
     public DesktopBackend(string? storageRoot = null)
     {
         this.storageRoot = storageRoot ?? Root;
+        backgroundMonitoringAllowed = storageRoot is null;
+        backgroundPreferencePath = Path.Combine(this.storageRoot,"background-cleanup.json");
+        try { if(File.Exists(backgroundPreferencePath)) backgroundEnabled=JsonSerializer.Deserialize<bool>(File.ReadAllText(backgroundPreferencePath)); }
+        catch { backgroundEnabled=false; }
         if (storageRoot is null) migrationWarning = PreferenceMigration.Copy(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RobloxMultiInstancePreview"), this.storageRoot);
         store = new(Path.Combine(this.storageRoot,"window-layouts.json")); appearance = new(Path.Combine(this.storageRoot,"appearance.json"));
         using var process = Process.GetCurrentProcess();
         collector = new(platform,LegacyProgram.Sid,process.SessionId);
         try { settings = store.Load(); } catch { settings = LayoutSettings.Default; settingsAvailable = false; } imported = File.Exists(Path.Combine(this.storageRoot,"imported"));
         downloader = new(http,Path.Combine(this.storageRoot,"updates","staging"));
+        InitializeFeatures(storageRoot is null);
+        InitializePerformance();
+        StartBackgroundCleanup();
         labels.Resolved+=(version,key,name)=> { lock(identityLock) { if(Volatile.Read(ref disposed)!=0||version!=generation)return;var rows=ids.Where(x=>x.Key.Key==key).Select(x=>new { id=x.Value,username=name }).ToArray();Event?.Invoke("labels","instances.labels",new { generation=version,labels=rows }); } };
+    }
+    object BackgroundStatus() => new { enabled=backgroundEnabled,owns=background?.OwnsMutex??false,waiting=background is not null && !background.OwnsMutex };
+    void StartBackgroundCleanup()
+    {
+        if(!backgroundEnabled || !backgroundMonitoringAllowed || background is not null)return;
+        using var current=Process.GetCurrentProcess();
+        background=new(new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false),new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId),@"Local\RobloxLaunchHelper-BackgroundCleanup-"+LegacyProgram.Sid+"-"+current.SessionId);
+    }
+    public async Task StopBackgroundCleanupAsync()
+    {
+        if(background is null)return;
+        await background.StopAsync();background.Dispose();background=null;
     }
     static string Text(JsonElement p,string key,string fallback="") => p.TryGetProperty(key,out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : fallback;
     static bool Bool(JsonElement p,string key) => p.TryGetProperty(key,out var v) && v.ValueKind == JsonValueKind.True;
@@ -67,11 +89,17 @@ public sealed class DesktopBackend : IDesktopBackend
         token.ThrowIfCancellationRequested();
         if(command is "updates.cancel") { downloadCancellation?.Cancel(); return new { canceled=true }; }
         using var operation = operations.Enter(command);
+        // Automatic window changes and user window/layout commands share one native gate.
+        if(OperationCoordinator.Category(command)=="windows"&&!command.StartsWith("performance.",StringComparison.Ordinal))
+        {
+            await performanceGate.WaitAsync(token);
+            try {return await ExecuteCoreAsync(command,payload,token);}finally {performanceGate.Release();}
+        }
         if(command is "instances.list" or "instances.refresh" or "instances.stopLabels") {
             await discovery.WaitAsync(token);
             try { return await ExecuteCoreAsync(command,payload,token); } finally { discovery.Release(); }
         }
-        if(OperationCoordinator.Category(command)=="preferences" || command is "settings.get" or "settings.read" or "layouts.get" or "layouts.preview" or "layouts.savePreset") {
+        if(OperationCoordinator.Category(command)=="preferences" && !command.StartsWith("accounts.",StringComparison.Ordinal) || command is "settings.get" or "settings.read" or "layouts.get" or "layouts.preview" or "layouts.savePreset") {
             await preferenceGate.WaitAsync(token);try{return await ExecuteCoreAsync(command,payload,token);}finally{preferenceGate.Release();}
         }
         return await ExecuteCoreAsync(command,payload,token);
@@ -85,13 +113,21 @@ public sealed class DesktopBackend : IDesktopBackend
     static OperationResultDto Result(OperationResult result)=>new(result.Outcome.ToString(),result.Code,result.Message,result.Items?.Select(x=>new OperationItemDto(x.Id,x.Outcome.ToString(),x.Code,x.Message)).ToArray()??[]);
     async Task<object?> ExecuteCoreAsync(string command, JsonElement p, CancellationToken token)
     {
+        if(command.StartsWith("performance.",StringComparison.Ordinal)) return await ExecutePerformanceAsync(command,p,token);
+        if(command.StartsWith("telemetry.",StringComparison.Ordinal)||command.StartsWith("support.",StringComparison.Ordinal)||command.StartsWith("accounts.",StringComparison.Ordinal)||command.StartsWith("games.",StringComparison.Ordinal))
+            return await ExecuteFeatureAsync(command,p,token);
         switch(command)
         {
-            case "background.status": return new { enabled=background is not null,owns=background?.OwnsMutex??false,waiting=background is not null && !background.OwnsMutex };
+            case "background.status": return BackgroundStatus();
             case "background.set":
-                if(Bool(p,"enabled") && background is null) { using var current=Process.GetCurrentProcess();background=new(new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false),new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId),@"Local\RobloxLaunchHelper-BackgroundCleanup-"+LegacyProgram.Sid+"-"+current.SessionId); }
-                else if(!Bool(p,"enabled") && background is not null) { await background.StopAsync();background.Dispose();background=null; }
-                return new { enabled=background is not null,owns=background?.OwnsMutex??false,waiting=background is not null && !background.OwnsMutex };
+                if(!p.TryGetProperty("enabled",out var enabledValue) || enabledValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new ArgumentException("Choose whether background cleanup is enabled.");
+                Directory.CreateDirectory(storageRoot);
+                string temporary=backgroundPreferencePath+"."+Guid.NewGuid().ToString("N")+".tmp";
+                try { File.WriteAllText(temporary,JsonSerializer.Serialize(enabledValue.GetBoolean()));File.Move(temporary,backgroundPreferencePath,true); }
+                finally { if(File.Exists(temporary))File.Delete(temporary); }
+                backgroundEnabled=enabledValue.GetBoolean();
+                if(backgroundEnabled)StartBackgroundCleanup();else await StopBackgroundCleanupAsync();
+                return BackgroundStatus();
             case "app.state": return new AppStateDto(typeof(DesktopBackend).Assembly.GetName().Version?.ToString(3) ?? "unknown",VersionLabel(),File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending")),"Browser integration and launch history are managed by the installed helper. " + migrationWarning,await ReadinessAsync(token));
             case "instances.cleanup":
                 Confirm(p); using(var current=Process.GetCurrentProcess()) { var fresh=await Task.Run(()=>new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false).Collect(token),token); var cleanup=new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId);if(!fresh.Available || fresh.Unavailable>0)return Result(new(OperationOutcome.Unknown,"INSPECTION_UNAVAILABLE","Cleanup could not safely inspect all clients. Nothing was stopped."));return Result(OperationResult.ForCleanup(await Task.Run(()=>BackgroundClientCleanup.Candidates(fresh,DateTime.UtcNow).Select(key=>cleanup.Execute(key,token)).ToArray(),token))); }
@@ -178,6 +214,7 @@ public sealed class DesktopBackend : IDesktopBackend
                 if(page!=UpdateUrls.Releases&&!UpdateUrls.RepositoryUrl(page,"/releases/tag/"))throw new DesktopOperationException("INVALID_REQUEST","Unsupported release page.");
                 Process.Start(new ProcessStartInfo(page.ToString()){UseShellExecute=true})?.Dispose();return new {opened=true};
             case "updates.download":
+                if(!UpdatePublisherTrust.IsConfigured)throw new DesktopOperationException("PUBLISHER_UNCONFIGURED",UpdatePublisherTrust.MissingIdentity);
                 if(release?.Asset is null)throw new DesktopOperationException("STATE_CHANGED","Check for an available verified update first.");
                 downloaded?.Dispose();downloaded=null;
                 string downloadId=requestId.Value??"update-download";
@@ -208,6 +245,7 @@ public sealed class DesktopBackend : IDesktopBackend
         var rows=result.Instances.SelectMany(client=>client.Windows.Length==0 ? new[]{ new InstanceDto(GetId(new(client.Key,0)),"Background client",client.Key.Id,labels.Cached(client.Key),client.CpuPercent,client.WorkingSet,InstancePolicy.Started(client.Key),false) } : client.Windows.Select(window=> { var target=new InstanceTarget(client.Key,window.Handle);live.Add(target);return new InstanceDto(GetId(target),window.Title,client.Key.Id,labels.Cached(client.Key),client.CpuPercent,client.WorkingSet,InstancePolicy.Started(client.Key),true); })).ToArray();
         foreach(var target in ids.Keys.Where(x=>!live.Contains(x)).ToArray()){targets.Remove(ids[target]);ids.Remove(target);}
         labels.Schedule(result.Instances.Select(x=>x.Key),version);
+        rows=rows.Select(row=>{var optimization=automaticPerformance.Result(new(row.Pid,row.Started.ToFileTimeUtc()));return row with {BypassOptimizations=optimization?.BypassOptimizations??false,OptimizationStatus=optimization?.State??"Unmanaged"};}).ToArray();
         return new InstanceListDto(result.Available,result.Unavailable,rows,version);
         }
     }
@@ -218,7 +256,8 @@ public sealed class DesktopBackend : IDesktopBackend
         if(!Enum.TryParse<ArrangementKind>(Text(p,"kind","Grid"),true,out var kind))throw new DesktopOperationException("INVALID_REQUEST","Unknown arrangement.");
         var selected=p.GetProperty("ids").EnumerateArray().Select(v=>targets.TryGetValue(v.GetString()!,out var t)?t:throw new DesktopOperationException("STATE_CHANGED","A window selection expired.")).Distinct().ToArray();
         var monitors=placement.Monitors();
-        var windows=await Task.Run(()=>selected.Select(t=> { try { using var session=placement.Open(t);return session.Read(); } catch { return new LayoutWindow(t,"Window",Rectangle.Empty,Size.Empty,false,"Exited or unavailable"); } }).ToArray(),token);
+        var windows=await Task.Run(()=>selected.Select(t=> { token.ThrowIfCancellationRequested();try { using var session=placement.Open(t);return session.Read(); } catch { return new LayoutWindow(t,"Window",Rectangle.Empty,Size.Empty,false,"Exited or unavailable"); } }).ToArray(),token).WaitAsync(token);
+        token.ThrowIfCancellationRequested();
         var assignments=p.TryGetProperty("assignments",out var a)?a.Deserialize<string[]>()!:windows.Select(_=>monitors.FirstOrDefault(m=>m.Primary)?.Id??monitors.FirstOrDefault()?.Id??"").ToArray();
         plan=BuildPlan(monitors,windows,assignments,kind,settings.Presets.FirstOrDefault(x=>x.Name==Text(p,"preset")));
         planApplied=false; planId=Guid.NewGuid().ToString("N");return new PlanDto(planId,plan.Valid,plan.Error,plan.Notes,monitors.Select(MapMonitor).ToArray(),plan.Placements.Select(w=>new PlacementDto(GetId(w.Target),w.Bounds.X,w.Bounds.Y,w.Bounds.Width,w.Bounds.Height,w.Slot)).ToArray());
@@ -252,10 +291,10 @@ public sealed class DesktopBackend : IDesktopBackend
     void InvalidateProbe(){if(probeFingerprint!=HelperReadiness.Fingerprint())worker=DiagnosticChecks.NotTested;}
     async Task<string> ReadinessAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending")));}
     async Task<object> HealthAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return new HealthDto(h.Overall.ToString(),VersionLabel(),h.BrowserIntegrationEnabled,h.Checks.Append(worker).Select(c=>new CheckDto(c.Id,c.Id,c.State.ToString(),c.Code.ToString(),DiagnosticMessages.Text(c.Code),c.Action.ToString())).ToArray(),HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))));}
-    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem,release?.Asset is not null,downloaded is not null,release?.Page.ToString());
+    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem??(release is not null&&!UpdatePublisherTrust.IsConfigured?UpdatePublisherTrust.MissingIdentity:null),release?.Asset is not null&&UpdatePublisherTrust.IsConfigured,downloaded is not null,release?.Page.ToString());
     Task<int> RunHelperAsync(string argument,CancellationToken token)=>RunExecutableAsync(LegacyProgram.InstalledExe,argument,token);
     static async Task<int> RunExecutableAsync(string executable,string argument,CancellationToken token){token.ThrowIfCancellationRequested();var start=new ProcessStartInfo(executable){UseShellExecute=true};foreach(var word in argument.Split(' ',StringSplitOptions.RemoveEmptyEntries))start.ArgumentList.Add(word);using var child=Process.Start(start)??throw new DesktopOperationException("OPERATION_FAILED","The helper could not start.");await child.WaitForExitAsync(CancellationToken.None);return child.ExitCode;}
-    public void Dispose(){Interlocked.Exchange(ref disposed,1);labels.Dispose();background?.Dispose();downloadCancellation?.Cancel();downloaded?.Dispose();http.Dispose();}
+    public void Dispose(){Interlocked.Exchange(ref disposed,1);DisposeFeatures();DisposePerformance();labels.Dispose();background?.Dispose();downloadCancellation?.Cancel();downloaded?.Dispose();http.Dispose();}
 }
 
 

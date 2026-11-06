@@ -1,0 +1,11 @@
+{
+  "name": "rmi-support",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "triggers": { "crons": ["17 3 * * *"] },
+  "ratelimits": [{ "name": "SUPPORT_RATE", "namespace_id": "10423", "simple": { "limit": 60, "period": 60 } }]
+  // Configure an independent SUPPORT_DB D1 binding before deployment.
+  // No placeholder database ID or payment credentials are deployed by this file.
+}

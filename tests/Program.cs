@@ -53,6 +53,17 @@ internal static class Tests
             Check(Launch.IsRobloxUri("roblox-player:test")); Check(Launch.IsRobloxUri("ROBLOX:test"));
             Check(!Launch.IsRobloxUri("https://roblox.com")); Check(!Launch.IsRobloxUri("--worker"));
         });
+        Run("Account batch selects the exact production build and refuses update-triggering fallbacks",()=>
+        {
+            const string version="version-0123456789abcdef";
+            string stale=@"C:\Roblox\version-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\RobloxPlayerBeta.exe";
+            string production=@"C:\Roblox\"+version+@"\RobloxPlayerBeta.exe";
+            string command="\""+stale+"\" %1";
+            Check(Launch.BuildStart(ProductionPlayer.Select(version,command,[stale,production],_=>true,_=>true),null).FileName==production);
+            Throws<UserError>(()=>ProductionPlayer.Select(version,command,[stale],_=>true,_=>true));
+            Throws<UserError>(()=>ProductionPlayer.Select(version,command,[production],_=>true,_=>false));
+            Throws<InvalidDataException>(()=>ProductionPlayer.Select("../other",command,[production],_=>true,_=>true));
+        });
         Run("Peer authentication rejects wrong owner, session and elevation", () =>
         {
             var identity = new Identity(RobloxLaunchHelper.Program.Sid, Process.GetCurrentProcess().SessionId, true, RobloxLaunchHelper.Program.InstalledExe, 0);
@@ -137,9 +148,11 @@ internal static class Tests
             Throws<System.ComponentModel.Win32Exception>(() => Native.GetIdentity(int.MaxValue));
         });
         DiagnosticsTests.Run(Run);
+        TelemetryTests.Run(Run);
         LaunchNotificationTests.Run(Run);
         ActiveInstancesTests.Run(Run);
         BackgroundClientCleanupTests.Run(Run);
+        ReplacedSessionCleanupTests.Run(Run);
         LaunchStartupTests.Run(Run);
         WindowLayoutsTests.Run(Run);
         UpdateTests.Run(Run);

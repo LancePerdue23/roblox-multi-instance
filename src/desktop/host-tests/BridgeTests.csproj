@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
-  <ItemGroup><Compile Include="../host/BridgeProtocol.cs" Link="BridgeProtocol.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../host/BridgeProtocol.cs" Link="BridgeProtocol.cs" /><Compile Include="../host/AccountSignInCleanup.cs" Link="AccountSignInCleanup.cs" /><Compile Include="../host/StartupReadinessPolicy.cs" Link="StartupReadinessPolicy.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../host/AccountSignInChecks.cs" Link="AccountSignInChecks.cs" /></ItemGroup>
 </Project>

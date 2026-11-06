@@ -2,6 +2,24 @@ import {test,expect} from '@playwright/test';
 import {installWorkspace} from './fixtures/workspace';
 test.beforeEach(async({page})=>installWorkspace(page));
 
+test('idle layout visits settle and account label updates do not regenerate previews',async({page})=>{
+ await page.getByRole('button',{name:'Layouts',exact:true}).click();
+ await expect(page.getByRole('status').last()).toContainText('completed');
+ const count=()=>page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(c=>c.command==='layouts.preview').length);
+ await page.waitForTimeout(400);expect(await count()).toBe(0);
+ await page.getByRole('button',{name:'Select all',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Apply layout…',exact:true})).toBeEnabled();expect(await count()).toBe(1);
+ await page.evaluate(()=>{
+  const emit=(window as unknown as {testEmit:(value:unknown)=>void}).testEmit;
+  for(let i=0;i<8;i++)emit({version:1,event:'instances.labels',data:{generation:undefined,labels:[{id:'opaque-test-id',username:'Updated label '+i}]}});
+ });
+ await page.waitForTimeout(500);expect(await count()).toBe(1);
+ await page.getByRole('button',{name:'Select all',exact:true}).click();await expect(page.getByRole('button',{name:'Apply layout…',exact:true})).toBeEnabled();expect(await count()).toBe(2);
+ await page.getByRole('button',{name:'Layouts',exact:true}).dblclick();await expect(page.getByRole('alert')).toHaveCount(0);
+ await expect(page.getByText('Updating preview…',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Instances',exact:true}).click();await expect(page.getByRole('heading',{name:'Instances',exact:true})).toBeVisible();
+});
+
 test('renders all pages and keeps layout apply behind confirmation',async({page})=>{
  await page.getByLabel('Select Roblox — Test window').check();
  await page.getByRole('button',{name:'Arrange selected'}).click();
@@ -10,8 +28,8 @@ test('renders all pages and keeps layout apply behind confirmation',async({page}
  await expect(page.getByRole('dialog')).toBeVisible();
  expect(await page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(call=>call.command==='layouts.apply').length)).toBe(0);
  await page.getByRole('button',{name:'Cancel',exact:true}).click();
- await page.getByRole('button',{name:'Activity',exact:true}).click();await expect(page.getByText('No matching launch results')).toBeVisible();
- await page.getByRole('button',{name:'System',exact:true}).click();await expect(page.getByRole('tab').first()).toHaveText('Version & updates');await expect(page.getByRole('tab',{name:'Version & updates',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByText('Installed helper',{exact:true})).toBeVisible();await page.getByRole('tab',{name:'Health',exact:true}).click();await expect(page.getByText('Helper is installed.')).toBeVisible();
+ await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Activity',exact:true}).click();await expect(page.getByText('No matching launch results')).toBeVisible();
+ await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Version & updates',exact:true}).click();await expect(page.getByRole('tab').first()).toHaveText('Version & updates');await expect(page.getByRole('tab',{name:'Version & updates',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByText('Installed helper',{exact:true})).toBeVisible();await page.getByRole('tab',{name:'Health',exact:true}).click();await expect(page.getByText('Helper is installed.')).toBeVisible();
  await page.getByRole('tab',{name:'Version & updates',exact:true}).click();await page.getByRole('button',{name:'Check for updates'}).click();await expect(page.getByText('1.2.0',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Settings',exact:true}).click();await expect(page.getByRole('heading',{name:'Color scheme'})).toBeVisible();
  await page.screenshot({path:'../../.build/preview-ui-results/settings-dark.png',fullPage:true});
@@ -48,7 +66,7 @@ test('dropdown popups follow every theme and support keyboard selection',async({
   await combo.press('ArrowDown');await combo.press('Home');await combo.press('Enter');await expect(combo).toHaveText('Grid⌄');
   await combo.click();await combo.press('Escape');await expect(combo).toBeFocused();
  }
- await page.getByRole('button',{name:'Activity',exact:true}).click();
+ await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Activity',exact:true}).click();
  const filter=page.getByRole('combobox',{name:'Filter launch activity'});await filter.focus();await filter.press('n');await expect(filter).toHaveText('Needs attention⌄');
 });
 
@@ -56,7 +74,7 @@ test('audits all page surfaces, light system mode, forced colors and dialog cont
  await page.emulateMedia({colorScheme:'light'});
  await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Follow Windows Use this scheme'}).click();
  expect(await page.locator('html').evaluate(el=>getComputedStyle(el).getPropertyValue('color-scheme'))).toBe('light');
- for(const section of ['Instances','Layouts','Activity','System','Settings']){
+ for(const section of ['Instances','Layouts','System','Settings']){
   await page.getByRole('button',{name:section,exact:true}).click();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:`../../.build/preview-ui-results/audit-${section}.png`,fullPage:true});
@@ -162,7 +180,7 @@ test('instances keep compact account labels and layouts show names without a pre
 
 test('launch details expand immediately below the selected activity row',async({page})=>{
  await page.goto('/?activity-rows');
- await page.getByRole('button',{name:'Activity',exact:true}).click();
+ await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Activity',exact:true}).click();
  const buttons=page.getByRole('button',{name:'View details',exact:true});
  await expect(buttons).toHaveCount(3);
  for(const index of [0,1,2]){

@@ -55,8 +55,9 @@ internal static class LaunchStartup
         return await Task.Run(() => collector.Collect(token), token);
     }
 
-    // Monitor for at least eight seconds, including when the worker quickly says
-    // OK. A released singleton does not prove the new player survived startup.
+    // Preserve the worker's bounded scan through startup gaps. Successful cleanup
+    // need not wait for a fixed observation floor; confirmation concerns the
+    // singleton, not a guarantee that the player survives later gameplay.
     internal static Task<bool> ExitedAsync(Process starter, IInstanceCollector collector,
         InstanceSnapshot baseline, Task workerResult, CancellationToken token)
         => ExitedAsync(baseline, () => starter.HasExited,
@@ -71,7 +72,7 @@ internal static class LaunchStartup
         var elapsed = Stopwatch.StartNew();
         milliseconds ??= () => elapsed.ElapsedMilliseconds;
         delay ??= ct => Task.Delay(500, ct);
-        do
+        while (true)
         {
             token.ThrowIfCancellationRequested();
             bool exited;
@@ -80,10 +81,13 @@ internal static class LaunchStartup
             if (exited)
             {
                 var snapshot = await collect(token);
-                if (state.Exited(snapshot, true, milliseconds())) return true;
+                // A bootstrapper can disappear well before the replacement player
+                // appears. Keep the worker's bounded scan alive until its result;
+                // a temporary process gap must not cancel singleton cleanup.
+                if (state.Exited(snapshot, true, milliseconds()) && workerResult.IsCompleted && milliseconds() >= 8000) return true;
             }
+            if(workerResult.IsCompleted && !state.ExitPending)return false;
             await delay(token);
-        } while (milliseconds() < 8000 || !workerResult.IsCompleted || state.ExitPending);
-        return false;
+        }
     }
 }
