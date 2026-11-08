@@ -21,7 +21,7 @@ $taskStage=Join-Path $PSScriptRoot ('.build/distribution/'+[guid]::NewGuid().ToS
 $taskArtifacts=Join-Path $PSScriptRoot 'artifacts'
 New-Item -ItemType Directory -Force $taskStage,$taskArtifacts | Out-Null
 function Publish-TaskProject([string]$project,[string]$output,[string[]]$extra=@()) {
-    & $Dotnet publish (Join-Path $PSScriptRoot $project) -c Release -r win-x64 --self-contained true -m:1 -p:NuGetAudit=false -p:UseSharedCompilation=false -p:BuildInParallel=false --disable-build-servers -o $output "-p:TelemetryEndpoint=$TelemetryEndpoint" "-p:UpdatePublisherSha256=$PublisherCertificateSha256" @extra
+    & $Dotnet publish (Join-Path $PSScriptRoot $project) -c Release -r win-x64 --self-contained true -m:1 -p:NuGetAudit=false -p:UseSharedCompilation=false -p:BuildInParallel=false -p:DebugType=none -p:DebugSymbols=false "-p:PathMap=$PSScriptRoot=/_/" --disable-build-servers -o $output "-p:TelemetryEndpoint=$TelemetryEndpoint" "-p:UpdatePublisherSha256=$PublisherCertificateSha256" @extra
     if($LASTEXITCODE){throw "Publish failed: $project"}
 }
 $taskHelper=Join-Path $taskStage 'helper'
@@ -30,7 +30,7 @@ $taskDesktop=Join-Path $taskStage 'desktop'
 # Share one runtime and core assembly inside each allowlisted edition payload.
 Publish-TaskProject 'src/helper/RobloxLaunchHelper.csproj' $taskHelper @('-p:PublishSingleFile=false')
 Publish-TaskProject 'src/cli/rmi.csproj' $taskCli @('-p:PublishSingleFile=false')
-& (Join-Path $PSScriptRoot 'src/desktop/Build.ps1') -Dotnet $Dotnet -Output $taskDesktop -SkipFrontend:$SkipFrontend -TelemetryEndpoint $TelemetryEndpoint -SupportConfig $SupportConfig -UpdatePublisherSha256 $PublisherCertificateSha256
+& (Join-Path $PSScriptRoot 'src/desktop/Build.ps1') -Dotnet $Dotnet -Output $taskDesktop -SkipFrontend:$SkipFrontend -TelemetryEndpoint $TelemetryEndpoint -SupportConfig $SupportConfig -UpdatePublisherSha256 $PublisherCertificateSha256 -OmitSymbols
 if (Test-Path -LiteralPath (Join-Path $taskDesktop 'web/local-supporter-preview.json')) { throw 'Local supporter preview assets cannot be packaged. Rebuild the frontend in the default mode.' }
 if (Test-Path -LiteralPath (Join-Path $taskDesktop 'web/local-role-switcher.js')) { throw 'Local role switcher cannot be packaged.' }
 if($LASTEXITCODE){throw 'Desktop build failed.'}

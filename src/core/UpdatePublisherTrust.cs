@@ -13,6 +13,7 @@ internal static class UpdatePublisherTrust
         .FirstOrDefault(a => a.Key == "UpdatePublisherSha256")?.Value ?? "";
     internal static bool IsConfigured => Regex.IsMatch(ConfiguredPin, "\\A[a-fA-F0-9]{64}\\z", RegexOptions.CultureInvariant);
     internal const string MissingIdentity = "Publisher trust is not configured in this build. In-app updates are disabled until a publisher-verified build is available.";
+    internal static void VerifyIfConfigured(string path) { if(IsConfigured)Verify(path); }
     internal static void Verify(string path) => Verify(path, ConfiguredPin, TrustedSigner);
     internal static void Verify(string path, string pin, Func<string, string?> trustedSigner)
     {

@@ -12,19 +12,19 @@ public static class BridgeProtocol
     public const int MaxMessageLength = 64 * 1024;
     private static readonly HashSet<string> Commands = new(StringComparer.Ordinal)
     {
-        "cancel", "app.state", "launch", "launch.start", "instances.list", "instances.stopLabels", "instances.focus", "instances.close", "instances.cleanup",
+        "cancel", "app.state", "launch", "launch.start", "instances.list", "instances.stopLabels", "instances.focus", "instances.close", "instances.stopAll", "instances.cleanup",
         "layouts.get", "layouts.preview", "layouts.apply", "layouts.savePreset", "layouts.renamePreset", "layouts.deletePreset",
         "activity.list", "activity.clear", "system.health", "system.testWorker", "system.integration", "system.maintenance", "system.openLogs",
         "settings.get", "settings.save", "settings.notifications", "settings.reset", "settings.resetNotifications", "settings.import", "shortcuts.save",
         "updates.openPage", "updates.check", "updates.download", "updates.install", "updates.cancel", "background.status", "background.set",
         "host.state", "host.tray", "host.shortcuts", "report.export", "previews.configure", "previews.stop",
         "telemetry.get", "telemetry.set", "telemetry.clear", "telemetry.send",
-        "support.get", "support.checkRoblox", "support.start", "support.roblox", "support.claim", "support.visibility", "support.remove", "support.import", "support.export", "support.forgetPending",
+        "support.badges", "support.importBadge", "support.get", "support.checkRoblox", "support.start", "support.roblox", "support.claim", "support.visibility", "support.remove", "support.import", "support.export", "support.forgetPending",
         "host.ready", "performance.controls", "performance.applyControls", "performance.resetControls", "performance.recoverControls",
         "performance.snapshot", "performance.profiles", "performance.saveProfiles", "performance.previewImport", "performance.import", "performance.export",
         "performance.activate", "performance.optimizationState", "accounts.optimizationBypass", "accounts.organize", "accounts.order",
         "games.recent", "games.remove", "games.clear",
-        "accounts.state", "accounts.connect", "accounts.rename", "accounts.remove", "accounts.target", "accounts.launchBatch"
+        "accounts.create", "accounts.credentials.open", "accounts.state", "accounts.connect", "accounts.rename", "accounts.remove", "accounts.target", "accounts.launchBatch"
     };
     public static bool IsAllowedCommand(string command) => Commands.Contains(command);
     public static bool IsTrusted(string source) => Uri.TryCreate(source, UriKind.Absolute, out var uri)

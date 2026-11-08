@@ -47,6 +47,7 @@ try
     }
     var manager=new AccountManager(root);Check(manager.State().Accounts.Length==0&&!Directory.Exists(root),"Read-only account startup creates no storage");
     Check(!manager.State().LaunchAvailable&&manager.State().Notice.Contains("not implemented"),"Unverified live launcher explicitly disabled");
+    checks+=await AccountCreationTests.RunAsync(Path.Combine(root,"creation"));
     var first=await manager.ConnectAsync(null,"First",(request,token)=>Task.FromResult<AccountIdentity?>(new("101","AccountOne")),default);
     Check(first.Accounts.Single().Status=="Saved locally; identity verified when saved","Successful sign-in reports saved identity verification");
     var reopened=new AccountManager(root).State();

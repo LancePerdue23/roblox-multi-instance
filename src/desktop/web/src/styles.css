@@ -148,3 +148,78 @@ html,body,#root{height:100%;overflow:hidden}.shell{height:100%;min-height:0}.sid
 .performance-fps-stops{display:flex;justify-content:space-between;margin:5px 7px 0;height:28px}.performance-fps-stops span{position:relative;width:0;font-size:10px;color:var(--muted);text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px}.performance-fps-stops i{height:5px;border-left:1px solid var(--muted)}
 .performance-fps-exact{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}.performance-fps-exact input{width:76px;min-width:0}.performance-cap-enabled{font-size:12px!important;margin:0!important}
 @media(max-width:850px){.performance-setting-row{grid-template-columns:1fr;gap:14px}.performance-setting-control{align-items:flex-start}.performance-setting-control>.select-trigger{width:100%}.performance-fps-control{max-width:520px}}
+
+/* Early membership concepts: the application's three-window mark in badge form. */
+.special-badge{--alpha-start:#bba1ff;--alpha-end:#f5cf78;position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:34px;max-width:100%;padding:3px 6px;border:0;border-radius:8px;background:none;color:var(--text);vertical-align:middle;line-height:1.2;box-sizing:border-box;overflow:visible}
+.badge-emblem{position:relative;z-index:1;width:30px;height:32px;flex:none;overflow:visible;stroke-linejoin:round}
+.badge-plate{fill:color-mix(in srgb,var(--alpha-start) 12%,var(--bg));stroke:var(--alpha-start);stroke-width:1.5}
+.badge-rim{stroke:var(--alpha-start);stroke-width:.8;opacity:.38}.badge-rim-highlight{stroke:var(--alpha-end);stroke-width:1.5;stroke-linecap:round}
+.badge-ribbon{fill:color-mix(in srgb,var(--alpha-start) 24%,var(--bg));stroke:var(--alpha-start);stroke-width:1}
+.window-back,.window-middle{fill:color-mix(in srgb,var(--alpha-start) 12%,var(--bg));stroke:var(--alpha-start)}.window-back{opacity:.75}.window-middle{opacity:.55}.window-first{fill:color-mix(in srgb,var(--alpha-end) 13%,var(--bg));stroke:var(--alpha-end)}.window-first-detail{stroke:var(--alpha-end);stroke-width:1.4;opacity:.65}.badge-origin-dot{fill:var(--alpha-end)}
+.design-fan .badge-origin-dot{display:none}
+.badge-lettering{position:relative;z-index:1;display:flex;flex-direction:column;align-items:flex-start;gap:5px;white-space:nowrap}.badge-title{font-size:12px;font-weight:650;letter-spacing:.01em}.badge-era{font-size:8px;font-weight:650;letter-spacing:.16em;color:var(--alpha-start)}
+.sidebar-recognition{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:10px}.account-profile .special-badge{align-self:start}
+.badge-design-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0 0 22px}.badge-design-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:190px;padding:22px 18px 18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;text-align:center}.badge-design-choice[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -2px var(--accent)}.badge-design-choice>.special-badge{pointer-events:none;flex-direction:column;gap:9px;padding:0}.badge-design-choice .badge-emblem{width:76px;height:80px}.badge-design-choice .badge-lettering{align-items:center;gap:5px}.badge-design-choice .badge-title{font-size:15px}.badge-design-choice .badge-era{font-size:9px}.badge-concept-copy{display:flex;flex-direction:column;gap:7px;align-self:stretch;text-align:center}.badge-concept-copy strong{font-size:13px}.badge-concept-copy small{font-size:12px;font-weight:400;color:var(--muted);line-height:1.5;white-space:normal}
+.recognition-workbench{display:grid;grid-template-columns:minmax(230px,.8fr) minmax(320px,1.2fr);gap:28px;align-items:stretch;margin:0}.recognition-stage{min-height:245px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}.recognition-stage>.special-badge{gap:13px;padding:0}.recognition-stage .badge-emblem{width:54px;height:57px}.recognition-stage .badge-title{font-size:16px}.recognition-stage .badge-era{font-size:9px}.recognition-stage small{color:var(--muted);text-align:center}
+.recognition-controls{display:flex;flex-direction:column;align-items:flex-start;gap:16px;padding:0}.recognition-controls h3{font-size:15px;margin:0}.recognition-controls>.muted{font-size:12px;line-height:1.6;margin:0}.recognition-palettes{display:flex;gap:7px;flex-wrap:wrap}.recognition-palettes button{display:flex;align-items:center;gap:7px;font-size:12px;padding:8px 11px}.recognition-palettes i{width:11px;height:11px;border-radius:50%}.recognition-palettes button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent)}.recognition-replay{margin-top:0}
+.recognition-unlock{padding:0;border:1px solid var(--line);border-radius:18px;background:var(--bg);color:var(--text);max-width:470px;width:calc(100% - 48px);overflow:hidden}.recognition-unlock::backdrop{background:#070a14b8;backdrop-filter:blur(8px)}.recognition-arrival{padding:40px 32px 30px;display:flex;flex-direction:column;align-items:center;gap:24px;text-align:center}.recognition-arrival h2,.recognition-arrival p{margin:0}.recognition-arrival p{color:var(--muted);line-height:1.7}.recognition-arrival .special-badge{flex-direction:column;gap:14px;animation:none}.recognition-arrival .badge-emblem{width:112px;height:118px}.recognition-arrival .badge-lettering{align-items:center;gap:7px}.recognition-arrival .badge-title{font-size:20px}.recognition-arrival .badge-era{font-size:10px}
+.recognition-static .recognition-arrival *{animation:none!important}
+
+@media(max-width:850px){.badge-design-gallery,.recognition-workbench{grid-template-columns:1fr}.badge-design-choice{min-height:190px}.recognition-stage{min-height:180px}}
+.local-special-button,.local-special-button:hover{display:flex;justify-content:center;width:100%;padding:0;border:0;background:transparent;box-shadow:none;outline-offset:4px}.local-special-button:focus:not(:focus-visible){outline:none}.local-special-button[hidden]{display:none}
+
+/* Keep the local badge out of view until its preceding preview controls mount. */
+.local-role-slot:empty~.local-special-button{visibility:hidden}
+/* Circle: a turning enamel pin; ribbon: a short, weighted sway. */
+.badge-emblem{transform-origin:center;transform-box:fill-box}.badge-ribbon{transform-box:fill-box;transform-origin:center top}
+:is(.special-motion:hover,.badge-design-choice:hover .special-motion,.local-special-button:focus-visible .special-motion).design-link .badge-emblem{animation:pin-hover 900ms ease-in-out}
+:is(.special-motion:hover,.badge-design-choice:hover .special-motion,.local-special-button:focus-visible .special-motion).design-link .badge-rim-highlight{transform-origin:36px 36px;animation:pin-orbit 1000ms cubic-bezier(.2,.7,.2,1)}
+:is(.special-motion:hover,.badge-design-choice:hover .special-motion,.local-special-button:focus-visible .special-motion).design-fan .badge-emblem{animation:ribbon-hover 1000ms ease-in-out}
+:is(.special-motion:hover,.badge-design-choice:hover .special-motion,.local-special-button:focus-visible .special-motion).design-fan .badge-ribbon{animation:ribbon-flutter 1100ms ease-in-out}
+:is(.special-motion:hover,.badge-design-choice:hover .special-motion,.local-special-button:focus-visible .special-motion) .window-first{animation:window-glint 1000ms ease-in-out}
+@keyframes pin-hover{0%,100%{transform:perspective(200px) rotateY(0) rotateZ(0)}35%{transform:perspective(200px) rotateY(-24deg) rotateZ(-8deg) translateY(-2px)}65%{transform:perspective(200px) rotateY(14deg) rotateZ(4deg)}}
+@keyframes pin-orbit{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes ribbon-hover{0%,100%{transform:rotate(0)}25%{transform:rotate(-9deg) translateY(-2px)}55%{transform:rotate(6deg)}78%{transform:rotate(-3deg)}}
+@keyframes ribbon-flutter{0%,100%{transform:skewX(0)}30%{transform:skewX(12deg)}60%{transform:skewX(-8deg)}80%{transform:skewX(4deg)}}
+@keyframes window-glint{0%,100%{filter:brightness(1)}45%{filter:brightness(1.8)}}
+/* Unlock choreography: draw the setting, assemble the windows, then reveal the title. */
+.recognition-arrival{position:relative;isolation:isolate;overflow:hidden}.recognition-arrival>*{position:relative;z-index:1}
+.recognition-arrival .special-badge::before{content:'';position:absolute;z-index:0;left:50%;top:calc(50% - 4px);width:170px;height:170px;border-radius:50%;border:1px solid var(--alpha-start);background:radial-gradient(circle,color-mix(in srgb,var(--alpha-start) 14%,transparent),transparent 68%);pointer-events:none;opacity:0;animation:badge-unlock-aura 1600ms 150ms ease-out both}
+.unlock-fan .recognition-arrival .special-badge::before{border-radius:24%;transform:rotate(45deg)}
+.recognition-arrival .badge-emblem{animation:seal-arrival 1200ms cubic-bezier(.16,1,.3,1) both}
+.unlock-link .recognition-arrival .badge-emblem{animation:pin-arrival 1500ms cubic-bezier(.16,1,.3,1) both}
+.unlock-fan .recognition-arrival .badge-emblem{animation:ribbon-arrival 1400ms cubic-bezier(.16,1,.3,1) both}
+.recognition-arrival .badge-plate{animation:badge-outline 1100ms ease-out both}
+.recognition-arrival .badge-ribbon{animation:ribbon-unfurl 850ms 450ms cubic-bezier(.2,.8,.2,1) both}
+.recognition-arrival .window-back{animation:window-assemble 650ms 350ms both}.recognition-arrival .window-middle{animation:window-assemble 650ms 500ms both}.recognition-arrival .window-first,.recognition-arrival .window-first-detail{animation:window-assemble 750ms 650ms both}
+.recognition-arrival .badge-lettering,.recognition-arrival h2,.recognition-arrival p{animation:badge-copy 600ms 900ms both}
+@keyframes pin-arrival{0%{opacity:0;transform:perspective(500px) rotateY(-150deg) rotateZ(-24deg) scale(.55)}55%{opacity:1;transform:perspective(500px) rotateY(16deg) rotateZ(6deg) scale(1.07)}80%{transform:perspective(500px) rotateY(-6deg) rotateZ(-2deg) scale(.98)}100%{opacity:1;transform:perspective(500px) rotateY(0) rotateZ(0) scale(1)}}
+@keyframes ribbon-arrival{0%{opacity:0;transform:translateY(-38px) rotate(-16deg) scale(.8)}50%{opacity:1;transform:translateY(5px) rotate(8deg) scale(1.04)}75%{transform:translateY(-2px) rotate(-4deg)}100%{opacity:1;transform:translateY(0) rotate(0) scale(1)}}
+@keyframes seal-arrival{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+@keyframes badge-outline{from{stroke-dasharray:1;stroke-dashoffset:1;fill-opacity:0}to{stroke-dasharray:1;stroke-dashoffset:0;fill-opacity:1}}
+@keyframes ribbon-unfurl{from{opacity:0;transform:scaleY(0)}to{opacity:1;transform:scaleY(1)}}
+@keyframes window-assemble{from{opacity:0;translate:0 9px}to{opacity:1;translate:0 0}}
+@keyframes badge-copy{from{opacity:0;translate:0 6px}to{opacity:1;translate:0 0}}
+@keyframes badge-unlock-aura{0%{opacity:0;translate:-50% -50%;scale:.5}30%{opacity:.6}100%{opacity:0;translate:-50% -50%;scale:1.65}}
+.special-badge:not(.special-motion) *,.recognition-static .recognition-arrival *,.recognition-static .recognition-arrival .special-badge::before{animation:none!important}
+@media(prefers-reduced-motion:reduce){.special-badge *,.recognition-arrival *,.recognition-arrival .special-badge::before{animation:none!important}}
+
+/* Align sidebar artwork with the support button edge. */
+.local-special-button,.local-special-button:hover{justify-content:flex-start!important;margin-left:-8px}.local-special-button>.special-badge,.sidebar-recognition>.special-badge{padding-left:0}.sidebar-recognition{justify-content:flex-start;margin-left:-8px}
+.recognition-stage{position:relative;overflow:hidden}.recognition-stage>:not(.cosmetic-stage-lines){position:relative;z-index:1}
+.account-ready-callout{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 20px;margin:16px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.account-ready-callout>div{display:grid;gap:5px}.account-ready-callout span{color:var(--muted);font-size:12px}.account-ready-callout button{white-space:nowrap}
+.credential-action-placeholder{visibility:hidden;pointer-events:none}
+
+/* Quick launch panel */
+dialog.launch-panel{width:620px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 48px);padding:0;overflow-y:auto;text-align:left}
+.launch-panel-heading{padding:24px 26px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line)}
+.launch-panel-heading h2{margin:5px 0 0}.launch-panel-heading>button{flex-shrink:0;padding:4px 12px;font-size:22px}
+.launch-panel-body{padding:24px 26px;gap:22px}.launch-panel-body p{margin:0}.launch-panel-body h3{margin:0}.launch-panel-body .eyebrow{font-size:11px}
+.launch-repeat{display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.launch-choice{display:flex;justify-content:space-between;align-items:center;gap:16px}.launch-choice>div:first-child{min-width:0}.launch-choice p{font-size:13px}.launch-choice>button{flex-shrink:0}
+.launch-panel-secondary{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px}.launch-panel-secondary span{font-size:12px}
+.launch-panel-actions{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:6px}
+.launch-account-picker{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}.launch-account-picker legend{margin-bottom:12px;font-weight:600}.launch-account-picker .check{margin:0;align-items:center}.launch-account-picker small{display:block;font-weight:400;color:var(--muted)}
+.launch-slot-list{display:flex;flex-direction:column;gap:8px}.launch-slot-list .button-row button{padding:4px 10px}.launch-review{display:grid;grid-template-columns:85px minmax(0,1fr);gap:16px;margin:0}.launch-review dt{color:var(--muted)}.launch-review dd{margin:0;overflow-wrap:anywhere}
+.launch-panel select{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);color:var(--text);background:var(--bg);font:inherit}.launch-panel details label{margin-top:12px}.launch-panel .error-banner button{margin-top:10px}.launch-panel .notice{margin:0}
+@media(max-width:560px){.launch-panel-heading,.launch-panel-body{padding:18px}.launch-choice{flex-wrap:wrap}.launch-repeat{padding:16px}.launch-slot-list .launch-choice{flex-wrap:nowrap}.launch-panel .button-row{flex-wrap:wrap}}

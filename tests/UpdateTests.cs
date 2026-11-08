@@ -132,7 +132,7 @@ internal static class UpdateTests
             await File.WriteAllBytesAsync(download.Executable, new byte[Payload.Length]);
             Throws<InvalidDataException>(() => new UpdateDownloader(validClient, directory, _ => New, verifyPublisher: _ => {}).VerifyAsync(download.Executable, Release(), default).GetAwaiter().GetResult());
         })));
-        run("Publisher trust fails closed without pins and rejects untrusted or different signers", () => Store(directory =>
+        run("Configured publisher trust rejects untrusted signers; unsigned builds support repository updates", () => Store(directory =>
         {
             string pin = new('A', 64); bool inspected = false;
             Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify("fixture", "", _ => { inspected = true; return pin; }));
@@ -140,8 +140,8 @@ internal static class UpdateTests
             if(!UpdatePublisherTrust.IsConfigured){
                 int requests=0;
                 using var client=Client(_=>{requests++;return new(HttpStatusCode.OK){Content=new ByteArrayContent(Payload)};});
-                Throws<InvalidDataException>(()=>new UpdateDownloader(client,directory,_=>New).DownloadAsync(Release(),null,default).GetAwaiter().GetResult());
-                Check(requests==0);
+                using var unsignedDownload=new UpdateDownloader(client,directory,_=>New,(_,_,_)=>Task.CompletedTask).DownloadAsync(Release(),null,default).GetAwaiter().GetResult();
+                Check(requests==1&&File.Exists(unsignedDownload.Executable));
             }
             Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify("fixture", pin, _ => null));
             Throws<InvalidDataException>(() => UpdatePublisherTrust.Verify("fixture", pin, _ => new string('B', 64)));

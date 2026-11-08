@@ -18,6 +18,7 @@ async Task Reject(DesktopBackend backend,string cmd,string payload,string name)
 }
 try
 {
+    SpecialBadgeTests.Run(Path.Combine(root,"special-badge-fixtures"),Check);
     string gamesRoot=Path.Combine(root,"recent-games-routing");
     using(var gamesBackend=new DesktopBackend(gamesRoot))
     using(var library=new GameLibrary(gamesRoot))
@@ -94,10 +95,16 @@ try
         Check(true,"Canceled sign-in permits another sign-in operation");
         await Reject(backend,"support.setRole","{\"role\":\"Super Supporter\"}","Supporter role cannot be set by a bridge command");
         await Reject(backend,"unknown.command","{}","Unknown commands rejected");
+        var quickAccounts=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("accounts.state",Payload("{\"includeAvatars\":false}"),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Check(quickAccounts.TryGetProperty("accounts",out _),"Quick launcher can read local accounts without avatar requests");
+        await Reject(backend,"accounts.state","{\"includeAvatars\":\"false\"}","Avatar option requires an explicit boolean");
         await Reject(backend,"system.maintenance","{\"action\":\"uninstall\"}","Maintenance requires confirmation");
         await Reject(backend,"settings.notifications","{\"showProgress\":true}","Shared notification writes require confirmation");
         await Reject(backend,"activity.clear","{}","History clearing requires confirmation");
         await Reject(backend,"instances.close","{\"id\":\"stale\"}","Close requires confirmation");
+        await Reject(backend,"instances.stopAll","{\"ids\":[\"stale\"]}","Stop All requires confirmation");
+        await Reject(backend,"instances.stopAll","{\"confirmed\":true,\"ids\":[\"stale\"]}","Stop All rejects stale selections before opening any process");
+        await Reject(backend,"instances.stopAll","{\"confirmed\":true,\"ids\":[]}","Stop All requires a frozen nonempty list");
         await Reject(backend,"instances.focus","{\"id\":\"stale\"}","Stale selections rejected");
         await Reject(backend,"layouts.apply","{\"confirmed\":true,\"planId\":\"stale\"}","Stale plans rejected");
         await backend.ExecuteAsync("settings.save",Payload("{\"scheme\":\"WarmNeutral\"}"),default);
@@ -130,6 +137,13 @@ try
     try { LayoutStore.Validate(LayoutSettings.Default with { Shortcuts=new() });throw new Exception("Invalid shortcuts accepted"); } catch(InvalidDataException) { Check(true,"Shortcut schema validation retained"); }
     var m=new LayoutMonitor("test","Primary",new(0,0,1920,1080),96,true);
     Check(LayoutPlanner.Cells(m,4,ArrangementKind.Grid).Length==4,"Layout planner retains grid allocation");
+    Check(DesktopBackend.BatchArrangement("Grid","")==ArrangementKind.Grid&&DesktopBackend.BatchArrangement("Columns","")==ArrangementKind.SideBySide,"Quick launch supports explicit Grid and Columns");
+    Check(DesktopBackend.BatchArrangement("","Saved") is null,"Existing saved-layout launches retain their original behavior");
+    foreach(var invalid in new[]{("Saved",""),("grid",""),("Grid","Saved"),("999","")})
+    {
+        try{DesktopBackend.BatchArrangement(invalid.Item1,invalid.Item2);throw new Exception("Invalid quick layout accepted.");}
+        catch(ArgumentException){Check(true,"Invalid or conflicting quick layouts rejected before launch");}
+    }
     var target1=new InstanceTarget(new ProcessKey(1,1),1);
     var target2=new InstanceTarget(new ProcessKey(2,2),2);
     var movable=new LayoutWindow(target1,"Ready",new(0,0,800,600),new(0,0),true,NeedsWindowed:true);
@@ -153,4 +167,3 @@ try
     return 0;
 }
 finally { Directory.Delete(root,true); }
-

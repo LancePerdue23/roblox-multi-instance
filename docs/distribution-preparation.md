@@ -4,7 +4,7 @@ Performance now has explicit global live presets, persistent account exemptions,
 
 The desktop and helper editions have installers published as separate private validation prereleases. Live Windows acceptance and stable production release remain pending.
 
-The full app + helper release is v1.0.0; the helper-only release is helper-v1.0.0. Both contain product version 1.0.0 and are marked prerelease, not Latest. See [release notes and acceptance gate](releases/v1.0.0.md). Unpublished development builds numbered 1.0.1 or 1.1.0 must be explicitly uninstalled before installing 1.0.0; numeric downgrade protection is retained for modern and legacy installs. The owner subsequently authorized separate releases followed by testing; stable promotion remains gated on manual acceptance. Keep the repository private.
+The 1.1.0 release round uses `v1.1.0` for App + Helper and `helper-v1.1.0` for Helper only, both private validation prereleases with product version 1.1.0. See [release notes](releases/v1.1.0.md). The owner confirmed focused live checks and authorized commit/push/publication for the private tester. Broader isolated Windows acceptance and stable promotion remain separate. Repository collaborators download manually; this does not make private prereleases discoverable by the stable-only updater. Keep the repository private.
 
 ## Build and verify
 
@@ -59,3 +59,8 @@ Publisher signing support and compiled signer pin checks are implemented; see [p
 Saved profiles now include optional EcoQoS (older files default to unchanged), with explicit apply through the existing process confirmation/reset path. CPU priority and EcoQoS requests are applied only where supported. FPS/graphics requests remain unapplied until a client integration has been verified.
 
 The [isolated acceptance checklist](releases/windows-acceptance.md) is prepared and remains Not run; the owner has no isolated Windows environment yet.
+
+## November 7 account and update hardening
+The owner confirmed live signup works. Partial autofill now requires explicit Refill before replacing fields again. Automatic layouts suspend the launch focus guard, and account-creation summaries distinguish canceled/stopped/skipped queues with actual newly saved counts. Native regression checks cover password reveal/edit/hide, disabled states, accessible keyboard controls, and nested/canceled focus suspension; browser fixtures cover credential action spacing and account switching.
+
+Publisher signing remains optional for repository-trusted validation builds. The desktop checks the latest published stable GitHub release on startup and offers an in-app review/download/setup flow. No download or setup starts without a user action. Unsigned builds retain repository URL, SHA-256, size, executable version, edition/protocol and embedded payload checks. Builds with a compiled publisher pin still require a matching trusted signer. Public stable install/update acceptance remains separate; the older Not run checklist has not been claimed complete.

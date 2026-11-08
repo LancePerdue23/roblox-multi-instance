@@ -95,8 +95,10 @@ internal static class Distribution
             app.SetValue("RmiOwnedPath",owned?1:0);
         }
         if(changed){environment.SetValue("Path",string.Join(';',paths),RegistryValueKind.ExpandString);SendMessageTimeout(new nint(0xffff),0x1a,0,"Environment",2,2000,out _);}
+        if(remove){using var classes=Registry.CurrentUser.CreateSubKey(@"Software\Classes");BadgeFileAssociation.Apply(classes,desktop,true);}
         if(remove){foreach(var name in new[]{"DisplayName","DisplayVersion","InstallLocation","UninstallString","NoModify","NoRepair"})entry.DeleteValue(name,false);return;}
         var metadata=Installed()??throw new InvalidDataException();
+        if(metadata.Edition=="Desktop"){using var classes=Registry.CurrentUser.CreateSubKey(@"Software\Classes");BadgeFileAssociation.Apply(classes,desktop,false);}
         entry.SetValue("DisplayName",metadata.Edition=="Desktop"?"Roblox Multi Instance":"Roblox Launch Helper");entry.SetValue("DisplayVersion",metadata.Version);entry.SetValue("InstallLocation",Program.InstallDirectory);entry.SetValue("UninstallString",$"\"{Path.Combine(Program.InstallDirectory,"Installer.exe")}\" --uninstall");entry.SetValue("NoModify",1);entry.SetValue("NoRepair",1);
     }
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern nint SendMessageTimeout(nint hwnd,uint message,nint parameter,string text,uint flags,uint timeout,out nint result);

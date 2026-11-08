@@ -3,6 +3,13 @@ export interface AccountBatchDto {
   batch: LaunchBatchResultDto;
   layoutStatus: string;
 }
+export interface AccountCreationProgressDto {
+  completed: number;
+  skipped: number;
+  remaining: number;
+  status: string;
+  code: string;
+}
 export interface AccountDto {
   id: string;
   nickname: string;
@@ -16,6 +23,8 @@ export interface AccountDto {
   robloxUserId: string | null;
   avatar: string | null;
   bypassOptimizations: boolean;
+  badges: SpecialBadgeDto[] | null;
+  hasStoredCredentials: boolean;
 }
 export interface AccountsStateDto {
   available: boolean;
@@ -62,6 +71,7 @@ export interface GameCardDto {
   artworkKind: string;
   accountIds: string[] | null;
   preset: string | null;
+  arrangement: string | null;
 }
 export interface HealthDto {
   overall: string;
@@ -311,6 +321,15 @@ export interface SlotDto {
   y: number;
   width: number;
   height: number;
+}
+export interface SpecialBadgeDto {
+  id: string;
+  title: string;
+  robloxUserId: string;
+}
+export interface SpecialBadgeStateDto {
+  badges: SpecialBadgeDto[];
+  message: string;
 }
 export interface SupportDto {
   configured: boolean;

@@ -132,6 +132,17 @@ public sealed partial class DesktopBackend : IDesktopBackend
             case "instances.cleanup":
                 Confirm(p); using(var current=Process.GetCurrentProcess()) { var fresh=await Task.Run(()=>new InstanceCollector(platform,LegacyProgram.Sid,current.SessionId,collectMetrics:false).Collect(token),token); var cleanup=new BackgroundClientCleanup(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId);if(!fresh.Available || fresh.Unavailable>0)return Result(new(OperationOutcome.Unknown,"INSPECTION_UNAVAILABLE","Cleanup could not safely inspect all clients. Nothing was stopped."));return Result(OperationResult.ForCleanup(await Task.Run(()=>BackgroundClientCleanup.Candidates(fresh,DateTime.UtcNow).Select(key=>cleanup.Execute(key,token)).ToArray(),token))); }
             case "instances.stopLabels": await labels.StopAsync();return new { stopped=true };
+            case "instances.stopAll":
+                Confirm(p);
+                ProcessKey[] stopTargets;
+                lock(identityLock)
+                {
+                    var requested=p.GetProperty("ids").Deserialize<string[]>()??[];
+                    if(requested.Length is <1 or >4096)throw new ArgumentException("Refresh Instances before stopping clients.");
+                    stopTargets=requested.Select(id=>targets.TryGetValue(id,out var item)?item.Key:throw new DesktopOperationException("STATE_CHANGED","The client list changed. Refresh Instances and review Stop all again.")).Distinct().ToArray();
+                }
+                using(var current=Process.GetCurrentProcess())
+                    return Result(await Task.Run(()=>new InstanceStopAll(pid=>new InstanceProcess(pid,allowStop:true),platform.Trusted,LegacyProgram.Sid,current.SessionId).Execute(stopTargets,token),token));
             case "instances.list": case "instances.refresh": return await ListAsync(token);
             case "instances.focus": case "instances.close":
                 if(command.EndsWith("close")) Confirm(p);
@@ -214,8 +225,9 @@ public sealed partial class DesktopBackend : IDesktopBackend
                 if(page!=UpdateUrls.Releases&&!UpdateUrls.RepositoryUrl(page,"/releases/tag/"))throw new DesktopOperationException("INVALID_REQUEST","Unsupported release page.");
                 Process.Start(new ProcessStartInfo(page.ToString()){UseShellExecute=true})?.Dispose();return new {opened=true};
             case "updates.download":
-                if(!UpdatePublisherTrust.IsConfigured)throw new DesktopOperationException("PUBLISHER_UNCONFIGURED",UpdatePublisherTrust.MissingIdentity);
+
                 if(release?.Asset is null)throw new DesktopOperationException("STATE_CHANGED","Check for an available verified update first.");
+                if(!HasNewerUpdate())throw new DesktopOperationException("STATE_CHANGED","No newer update is available for this installation.");
                 downloaded?.Dispose();downloaded=null;
                 string downloadId=requestId.Value??"update-download";
                 using(var downloadToken=CancellationTokenSource.CreateLinkedTokenSource(token))
@@ -227,6 +239,7 @@ public sealed partial class DesktopBackend : IDesktopBackend
                 return UpdateState();
             case "updates.install": case "updates.setup":
                 Confirm(p);if(downloaded is null||release is null)throw new DesktopOperationException("STATE_CHANGED","Download and verify the helper update first.");
+                if(!HasNewerUpdate())throw new DesktopOperationException("STATE_CHANGED","The installed version is already current. Check for updates again.");
                 await downloader.VerifyAsync(downloaded.Executable,release,token);
                 if(Distribution.Installed() is null)return Result(new(OperationOutcome.Warning,"LEGACY_UPGRADE_REQUIRED","This installation needs an explicit upgrade. Download the desktop setup from the release page."));
                 await new UpdateSetupHandoff().StartAsync(downloaded.Executable,release);
@@ -291,7 +304,8 @@ public sealed partial class DesktopBackend : IDesktopBackend
     void InvalidateProbe(){if(probeFingerprint!=HelperReadiness.Fingerprint())worker=DiagnosticChecks.NotTested;}
     async Task<string> ReadinessAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending")));}
     async Task<object> HealthAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return new HealthDto(h.Overall.ToString(),VersionLabel(),h.BrowserIntegrationEnabled,h.Checks.Append(worker).Select(c=>new CheckDto(c.Id,c.Id,c.State.ToString(),c.Code.ToString(),DiagnosticMessages.Text(c.Code),c.Action.ToString())).ToArray(),HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))));}
-    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem??(release is not null&&!UpdatePublisherTrust.IsConfigured?UpdatePublisherTrust.MissingIdentity:null),release?.Asset is not null&&UpdatePublisherTrust.IsConfigured,downloaded is not null,release?.Page.ToString());
+    bool HasNewerUpdate()=>release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed;
+    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem,release?.Asset is not null&&HasNewerUpdate(),downloaded is not null,release?.Page.ToString());
     Task<int> RunHelperAsync(string argument,CancellationToken token)=>RunExecutableAsync(LegacyProgram.InstalledExe,argument,token);
     static async Task<int> RunExecutableAsync(string executable,string argument,CancellationToken token){token.ThrowIfCancellationRequested();var start=new ProcessStartInfo(executable){UseShellExecute=true};foreach(var word in argument.Split(' ',StringSplitOptions.RemoveEmptyEntries))start.ArgumentList.Add(word);using var child=Process.Start(start)??throw new DesktopOperationException("OPERATION_FAILED","The helper could not start.");await child.WaitForExitAsync(CancellationToken.None);return child.ExitCode;}
     public void Dispose(){Interlocked.Exchange(ref disposed,1);DisposeFeatures();DisposePerformance();labels.Dispose();background?.Dispose();downloadCancellation?.Cancel();downloaded?.Dispose();http.Dispose();}

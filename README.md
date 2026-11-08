@@ -4,13 +4,13 @@
 
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
-[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.0.1)
+[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.0)
 [![Downloads](docs/assets/badges/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 ![Windows](docs/assets/badges/windows.svg)
 ![Architecture](docs/assets/badges/architecture.svg)
 ![Status](docs/assets/badges/status.svg)
 
-**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.0.1/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.0.1) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.1.0/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.1.0) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 
 </div>
 
@@ -43,17 +43,17 @@ The current releases are prereleases. Experimental features and live-game verifi
 
 | Area | What is included |
 | --- | --- |
-| Launch coordination | On-demand helper, browser Play integration, startup observation, and recovery diagnostics. |
-| Instances | Running-client visibility, validated window focus, and an experimental opt-in live preview grid with pause, privacy, fit, density, and retry controls. |
+| Launch coordination | Launch games with repeat/edit/review, ordered account batches, automatic layouts, on-demand helper, browser Play integration, and startup diagnostics. |
+| Instances | Running-client visibility, validated focus/close actions, confirmed Stop all, and a live preview grid with pause, privacy, fit, density, and retry controls. |
 | Activity | Launch history and diagnostics, independent of whether previews are enabled. |
-| Accounts | Local sign-in profiles, search, groups, notes, colors, favorites, and saved ordering. |
-| Games | Experience target validation, game artwork, favorites/recent targets, and saved batch/layout groundwork. |
+| Accounts | Local sign-in profiles, guided signup, protected supplied credentials and recovery, groups, notes, colors, favorites, and saved ordering. |
+| Games | Game target validation, artwork, recent games, and remembered ordered account/layout setups. |
 | Performance | Per-process CPU, working set, private commit, uptime, and I/O monitoring; history, saved profiles, and explicit CPU priority/EcoQoS controls where supported. |
 | Maintenance | Installation health, repair/recovery, browser integration settings, report export, and uninstall tools. |
 | Terminal | Interactive `rmi` menu, direct commands, and structured `--json` results for scripts. |
 | Privacy and support | Optional error reporting, off by default, plus cosmetic supporter receipt support when configured. Features remain free. |
 
-**Current limits:** account batch launching and account-to-window matching still require controlled live acceptance. Do not rely on unattended account batches. Preview capture is experimental. Saved FPS and graphics preferences do not currently change Roblox clients; performance profiles do not promise RAM savings. CPU priority and EcoQoS behavior depends on Windows support and process permissions.
+**Testing scope:** the owner completed focused live checks for this private tester release. Wider Windows installation/update and hardware acceptance remains separate. Verify actual accounts and game outcomes before relying on unattended batches. Preview capture is experimental. Saved FPS and graphics preferences do not currently change Roblox clients; performance profiles do not promise RAM savings. CPU priority and EcoQoS behavior depends on Windows support and process permissions.
 
 ## Getting started
 
@@ -68,7 +68,7 @@ Release packages include the .NET runtime. Node.js and the .NET SDK are developm
 
 ### 2. Install the recommended edition
 
-1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.0.1).
+1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.0).
 2. Download and run **`RobloxMultiInstance-Setup.exe`**.
 3. Review the browser Play integration option during setup. It is enabled by default on a fresh installation; upgrades retain your preference.
 4. Open Roblox Multi Instance and check **System → Health** for installation or helper issues.
@@ -137,7 +137,7 @@ Helper-only browser launches are windowless and on demand. That edition does not
 
 ### Can I automatically launch all saved accounts?
 
-Account organization and batch-launch infrastructure are implemented, but real-account authentication, correct-account joins, and window correlation still need live acceptance. Treat account launching as experimental rather than a guaranteed unattended workflow.
+Use Launch games to review and launch selected accounts or repeat a recent setup. The owner completed focused live checks; verify the actual account inside each game and inspect unconfirmed outcomes before retrying. Guided signup still requires you to submit the official form and complete Roblox security challenges.
 
 ### Does it unlock FPS or reduce memory automatically?
 
@@ -227,7 +227,7 @@ To use the CLI from the checkout without installation:
 ./Test.ps1
 ./Test-Shared.ps1
 ./Package.ps1
-./Test-Distribution.ps1 -ExpectedVersion 1.0.1.0
+./Test-Distribution.ps1 -ExpectedVersion 1.1.0.0
 ```
 
 - `Test.ps1`: current desktop/native contracts, frontend checks, browser workflows, and account/support/service fixtures.

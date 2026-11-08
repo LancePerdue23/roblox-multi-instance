@@ -25,6 +25,7 @@ internal static class Program
     }
     static async Task Run(bool capture)
     {
+        NativeAccountChecks.Run();
         foreach(string json in new[]{"{\"ids\":[\"one\",\"one\"],\"rate\":2}","{\"ids\":[\"one\"],\"rate\":60}","{\"ids\":[],\"rate\":2,\"hwnd\":123}","{\"ids\":[\"\"],\"rate\":2}"})
         {bool rejected=false;try{PreviewConfiguration.Parse(JsonSerializer.SerializeToElement(JsonSerializer.Deserialize<object>(json)));}catch{rejected=true;}Check(rejected,"Invalid configuration rejected");}
         string token=new('a',32),url=PreviewConfiguration.ImageOrigin+"/previews/"+token+".jpg?v=1";

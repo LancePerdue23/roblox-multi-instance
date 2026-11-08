@@ -55,6 +55,28 @@ internal sealed partial class MainWindow : Window
     private bool openUpdates;
     private bool hostReady;
     public void RequestUpdates(){openUpdates=true;if(hostReady){openUpdates=false;Send(new {version=1,@event="navigate",data=new {page="System",updates=true}});}}
+    private string? pendingBadge;
+    private bool claimingBadge;
+    public void RequestBadgeClaim(string path)
+    {
+        if(claimingBadge||pendingBadge is not null){Reopen();return;}
+        pendingBadge=BadgeActivation.Validate(path);
+        if(hostReady)_=ClaimPendingBadgeAsync();
+    }
+    private async Task ClaimPendingBadgeAsync()
+    {
+        if(!hostReady||claimingBadge||pendingBadge is null)return;
+        string path=pendingBadge;pendingBadge=null;claimingBadge=true;
+        try {
+            Reopen();
+            var state=await backend.ExecuteAsync("support.importBadgeFile",JsonSerializer.SerializeToElement(new {path}),closed.Token);
+            var element=JsonSerializer.SerializeToElement(state,json);
+            string message=element.TryGetProperty("message",out var text)?text.GetString()??"":"";
+            if(message.Contains("manually")||message.Contains("untouched")||message.StartsWith("Recognition already claimed"))MessageBox.Show(this,message,"Account recognition");
+        }catch(OperationCanceledException){ }
+        catch(Exception ex){MessageBox.Show(this,ex.Message,"Account recognition",MessageBoxButton.OK,MessageBoxImage.Information);}
+        finally {claimingBadge=false;}
+    }
     private RobloxLaunchHelper.UpdateShutdownRequest? updateShutdown;
     private readonly RobloxLaunchHelper.OperationCoordinator operations = new();
 
@@ -74,6 +96,9 @@ internal sealed partial class MainWindow : Window
         if(backend is DesktopBackend desktopBackend)
         {
             desktopBackend.AccountSignIn=(request,token)=>AccountSignInWindow.ShowAsync(this,request,token);
+            desktopBackend.AccountLayoutFocusScope=LaunchFocusGuard.Suspend;
+            desktopBackend.AccountCreate=(accounts,progress,token)=>AccountCreationHost.CreateAsync(this,accounts,progress,token);
+            desktopBackend.AccountCredentialsOpen=(accounts,id,token)=>AccountCreationHost.CredentialsAsync(this,accounts,id,token);
             desktopBackend.AccountLaunchSession=(account,token)=>AccountLaunchSession.OpenAsync(this,account,token);
         }
         windowTheme = new WindowTheme(this, backend.AppearanceScheme);
@@ -96,6 +121,7 @@ internal sealed partial class MainWindow : Window
         };
     }
 
+    internal string CreationThemeScheme => backend.AppearanceScheme;
     public void Reopen() { Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal; Activate(); }
 
     private async Task InitializeAsync()
@@ -116,7 +142,7 @@ internal sealed partial class MainWindow : Window
             await StartupReadinessPolicy.RunBoundedAsync(token=>InitializeBrowserAsync(startupView,attempt,token),StartupReadinessPolicy.Deadline,closed.Token);
             if(startup.Ready(attempt))
             {
-                loading.Children.Remove(view);body.Content=view;view.Visibility=Visibility.Visible;windowTheme.SetWorkspaceReady(true);hostReady=true;if(openUpdates)RequestUpdates();
+                loading.Children.Remove(view);body.Content=view;view.Visibility=Visibility.Visible;windowTheme.SetWorkspaceReady(true);hostReady=true;if(openUpdates)RequestUpdates();_=ClaimPendingBadgeAsync();
             }
         }
         catch(OperationCanceledException) when(closed.IsCancellationRequested) { }
@@ -252,6 +278,8 @@ internal sealed partial class MainWindow : Window
         bool layout = request.Command == "layouts.apply";
         if(request.Command=="layouts.preview")cancellation.CancelAfter(TimeSpan.FromSeconds(15));
         if (layout) { layoutOperations++; Send(new { version = 1, operationId = request.Id, @event = "host.busy", data = new { busy = true } }); }
+        using var layoutFocusScope=layout?LaunchFocusGuard.Suspend():null;
+        var launchFocus = request.Command is "accounts.launchBatch" or "launch" or "launch.start" ? LaunchFocusGuard.Start(this, closed.Token) : null;
         try
         {
             object? data;
@@ -277,6 +305,13 @@ internal sealed partial class MainWindow : Window
                 data = new { enabled = shortcuts?.Enabled == true, conflicts };
             }
             else if (request.Command == "host.state") data = new { tray = tray is not null, shortcuts = shortcuts?.Enabled == true };
+            else if(request.Command == "support.importBadge")
+            {
+                var dialog=new Microsoft.Win32.OpenFileDialog {Filter="Account recognition (*.rmibadge)|*.rmibadge",CheckFileExists=true,Multiselect=false};
+                data=dialog.ShowDialog(this)==true
+                    ? await backend.ExecuteAsync("support.importBadgeFile",JsonSerializer.SerializeToElement(new {path=dialog.FileName}),cancellation.Token)
+                    : await backend.ExecuteAsync("support.badges",JsonSerializer.SerializeToElement(new {}),cancellation.Token);
+            }
             else if(request.Command is "support.import" or "support.export")
             {
                 bool importing=request.Command=="support.import";
@@ -328,6 +363,8 @@ internal sealed partial class MainWindow : Window
         finally
         {
             if (layout) { layoutOperations--; Send(new { version = 1, operationId = request.Id, @event = "host.busy", data = new { busy = layoutOperations > 0 } }); }
+            if(cancellation.IsCancellationRequested)launchFocus?.Dispose();
+            else launchFocus?.Complete();
             running.Remove(request.Id);
             lease.Dispose();
             if (running.Count == 0) idle.TrySetResult();

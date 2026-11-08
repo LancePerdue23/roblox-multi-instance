@@ -3,6 +3,7 @@ using System.Text.Json;
 
 int count = 0;
 void Check(bool condition) { if (!condition) throw new Exception("Bridge check failed."); count++; }
+Check(BridgeProtocol.IsAllowedCommand("support.importBadge"));Check(BridgeProtocol.IsAllowedCommand("support.badges"));Check(!BridgeProtocol.IsAllowedCommand("support.importBadgeFile"));
 var signInChecks=new AccountSignInChecks();
 Check(signInChecks.Begin(0));Check(!signInChecks.Begin(100));
 signInChecks.Complete("NoSession",100);Check(!signInChecks.Begin(2099));Check(signInChecks.Begin(2100));
@@ -41,4 +42,16 @@ disposed=false;
 Check(!await AccountSignInCleanup.RunAsync(null,()=>Task.FromException(new Exception("browser closed")),()=>disposed=true,TimeSpan.FromSeconds(1)));Check(disposed);
 Check(await AccountSignInCleanup.RunAsync(Task.CompletedTask,()=>Task.CompletedTask,()=>{},TimeSpan.FromSeconds(1)));
 count+=await StartupReadinessTests.RunAsync();
-Console.WriteLine($"Passed {count} bridge and sign-in lifetime checks.");
+
+
+// Synthetic local activation: spaces and shell punctuation remain data.
+var badgePath=Path.Combine(Path.GetTempPath(),"alpha & tester.rmibadge");
+Check(BadgeActivation.Parse(["--claim-badge",badgePath])==badgePath);
+Check(BadgeActivation.Parse([badgePath])==badgePath);
+using(var activation=new MemoryStream()){BadgeActivation.Write(activation,badgePath);activation.Position=0;Check(activation.ReadByte()==3);Check(BadgeActivation.ReadAsync(activation,CancellationToken.None).GetAwaiter().GetResult()==badgePath);}
+foreach(var invalid in new[]{"relative.rmibadge",Path.Combine(Path.GetTempPath(),"bad.exe")}){try{BadgeActivation.Validate(invalid);throw new Exception("Unsafe activation accepted");}catch(ArgumentException){Check(true);}}
+using(var activation=new MemoryStream(BitConverter.GetBytes(8193))){try{BadgeActivation.ReadAsync(activation,CancellationToken.None).GetAwaiter().GetResult();throw new Exception("Oversized activation accepted");}catch(InvalidDataException){Check(true);}}
+
+Check(BadgeActivation.Parse(["--safe-rendering","--claim-badge",badgePath])==badgePath);
+try{BadgeActivation.Parse(["--claim-badge"]);throw new Exception("Missing path accepted");}catch(ArgumentException){Check(true);}
+Console.WriteLine($"Passed {count} bridge, activation and sign-in lifetime checks.");

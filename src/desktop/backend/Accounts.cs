@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace RobloxMultiInstance;
 
 // All bridge-visible records deliberately exclude cookies, tickets, profile paths and tokens.
-public sealed record AccountDto(string Id,string Nickname,string Username,string Status,string Group="",string Notes="",string Color="",bool Favorite=false,int Order=0,string? RobloxUserId=null,string? Avatar=null,bool BypassOptimizations=false);
+public sealed record AccountDto(string Id,string Nickname,string Username,string Status,string Group="",string Notes="",string Color="",bool Favorite=false,int Order=0,string? RobloxUserId=null,string? Avatar=null,bool BypassOptimizations=false,SpecialBadgeDto[]? Badges=null,bool HasStoredCredentials=false);
 public sealed record AccountsStateDto(bool Available,bool LaunchAvailable,string Notice,AccountDto[] Accounts);
 public sealed record LaunchTargetDto(string PlaceId,string? JobId,GameCardDto? Game=null);
 public sealed record LaunchBatchProgressDto(string BatchId,string AccountId,int Slot,string Status,string Code,long ElapsedMs=0,string? PlannedServer=null);
@@ -245,7 +245,9 @@ public sealed class LaunchBatchCoordinator(IAccountSessionProvider provider)
 
 public sealed class AccountManager
 {
+    internal Func<string,SpecialBadgeDto[]>? Recognition {get;set;}
     public Func<int,CancellationToken,Task<LaunchTargetDto>>? TargetForSlot {set=>batches.TargetForSlot=value;}
+    public AccountCredentialStore Credentials {get;}
     readonly AccountStore store;
     readonly IAccountVault vault;
     readonly IAccountSessionProvider provider;
@@ -253,12 +255,12 @@ public sealed class AccountManager
     readonly SemaphoreSlim gate=new(1,1);
     public AccountManager(string storageRoot,IAccountSessionProvider? provider=null,IAccountVault? vault=null)
     {
-        string root=Path.Combine(storageRoot,"accounts");store=new(root);this.vault=vault??new WindowsAccountVault(Path.Combine(root,"vault"));
+        string root=Path.Combine(storageRoot,"accounts");Credentials=new(root);store=new(root);this.vault=vault??new WindowsAccountVault(Path.Combine(root,"vault"));
         this.provider=provider??new UnverifiedAccountSessionProvider();batches=new(this.provider);
     }
     public AccountsStateDto State()
     {
-        try { return new(true,provider.LaunchAvailable,provider.Notice,store.Read().Select((a,index)=>new AccountDto(a.Id,a.Nickname,a.Username,"Saved locally; identity verified when saved",a.Group,a.Notes,a.Color,a.Favorite,index,a.RobloxUserId,BypassOptimizations:a.BypassOptimizations)).ToArray()); }
+        try { return new(true,provider.LaunchAvailable,provider.Notice,store.Read().Select((a,index)=>new AccountDto(a.Id,a.Nickname,a.Username,"Saved locally; identity verified when saved",a.Group,a.Notes,a.Color,a.Favorite,index,a.RobloxUserId,BypassOptimizations:a.BypassOptimizations,Badges:Recognition?.Invoke(a.RobloxUserId),HasStoredCredentials:Credentials.Has(a.Id))).ToArray()); }
         catch { return new(false,false,"Local account metadata could not be read. It has been preserved; account changes are unavailable.",[]); }
     }
     public LaunchTargetDto ValidateTarget(string input,string? jobId=null)=>LaunchTargetResolver.Parse(input,jobId);
@@ -310,7 +312,7 @@ public sealed class AccountManager
         }
         finally { gate.Release(); }
     }
-    public async Task<AccountsStateDto> ConnectAsync(string? accountId,string nickname,Func<AccountSignInRequest,CancellationToken,Task<AccountIdentity?>> signIn,CancellationToken token)
+    public async Task<AccountsStateDto> ConnectAsync(string? accountId,string nickname,Func<AccountSignInRequest,CancellationToken,Task<AccountIdentity?>> signIn,CancellationToken token,bool commitVerified=false,Func<Task<bool>>? retrySave=null)
     {
         nickname=(nickname??"").Trim();if(nickname.Length>60 || nickname.Any(char.IsControl))throw new ArgumentException("Use a nickname of up to 60 characters.");
         await gate.WaitAsync(token);
@@ -325,12 +327,18 @@ public sealed class AccountManager
             {
                 var identity=await signIn(new(id,store.Profile(id),existing?.RobloxUserId,saved.Where(a=>a.Id!=id).Select(a=>a.RobloxUserId).ToArray()),token);
                 if(identity is null)return State();
-                token.ThrowIfCancellationRequested();
+                if(!commitVerified)token.ThrowIfCancellationRequested();
                 if(!LaunchTargetResolver.IsPositiveId(identity.RobloxUserId)||!AccountStore.ValidUsername(identity.Username))throw new InvalidOperationException("Roblox identity could not be verified.");
                 if(existing is not null&&existing.RobloxUserId!=identity.RobloxUserId)throw new InvalidOperationException("A different Roblox account signed in. Remove this local account and add the new account separately.");
                 if(saved.Any(a=>a.Id!=id&&a.RobloxUserId==identity.RobloxUserId))throw new InvalidOperationException("This Roblox account is already saved locally.");
                 var item=existing is null?new SavedAccount(id,nickname.Length==0?identity.Username:nickname,identity.RobloxUserId,identity.Username):existing with { Nickname=nickname.Length==0?existing.Nickname:nickname,Username=identity.Username };
-                store.Write(existing is null?[..saved,item]:saved.Select(a=>a.Id==id?item:a).ToArray());committed=true;return State();
+                while(true)
+                {
+                    try { store.Write(existing is null?[..saved,item]:saved.Select(a=>a.Id==id?item:a).ToArray());break; }
+                    catch(IOException) when(commitVerified&&retrySave is not null) { if(!await retrySave())throw; }
+                    catch(UnauthorizedAccessException) when(commitVerified&&retrySave is not null) { if(!await retrySave())throw; }
+                }
+                committed=true;return State();
             }
             finally
             {
@@ -343,6 +351,28 @@ public sealed class AccountManager
         }
         finally { gate.Release(); }
     }
+    // A fresh sign-in may verify an already saved account without replacing its profile.
+    public async Task<string> ClaimRecognitionAsync(Func<string,bool> eligible,Func<AccountSignInRequest,CancellationToken,Task<AccountIdentity?>> signIn,CancellationToken token)
+    {
+        await gate.WaitAsync(token);
+        string id=Guid.NewGuid().ToString("N");bool committed=false;
+        try {
+            using var lease=await store.AcquireAsync(token);
+            var saved=store.Read();
+            var identity=await signIn(new(id,store.Profile(id),null,[]),token);
+            token.ThrowIfCancellationRequested();
+            if(identity is null)throw new OperationCanceledException("Recognition claim canceled; original file retained.");
+            if(!LaunchTargetResolver.IsPositiveId(identity.RobloxUserId)||!AccountStore.ValidUsername(identity.Username))throw new InvalidOperationException("Roblox identity could not be verified.");
+            if(!eligible(identity.RobloxUserId))throw new InvalidOperationException("This Roblox account is not eligible for this badge. The original file was retained.");
+            if(!saved.Any(a=>a.RobloxUserId==identity.RobloxUserId)){
+                if(saved.Length>=100)throw new InvalidOperationException("Remove an account before adding another.");
+                store.Write([..saved,new SavedAccount(id,identity.Username,identity.RobloxUserId,identity.Username)]);committed=true;
+            }
+            return identity.RobloxUserId;
+        } finally {
+            try {if(!committed)store.RemoveProfile(id);}finally{gate.Release();}
+        }
+    }
     public async Task<AccountsStateDto> RemoveAsync(string id,CancellationToken token)
     {
         await gate.WaitAsync(token);
@@ -354,7 +384,7 @@ public sealed class AccountManager
             token.ThrowIfCancellationRequested();
             // Delete secret material first. Locked browser data leaves the account visible
             // and can be retried after its sign-in window/browser processes close.
-            store.RemoveProfile(id);vault.Remove(id);store.Write(accounts.Where(a=>a.Id!=id).ToArray());return State();
+            store.RemoveProfile(id);vault.Remove(id);Credentials.Remove(id);store.Write(accounts.Where(a=>a.Id!=id).ToArray());return State();
         }
         finally { gate.Release(); }
     }

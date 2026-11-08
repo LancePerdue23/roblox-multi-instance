@@ -16,12 +16,17 @@ internal static class Entry
         int result=Run(args);
         if(result!=72)return result;
         // Run has released the single-instance mutex before launching the replacement.
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) {UseShellExecute=false,ArgumentList={"--safe-rendering"}})?.Dispose();return 0; }
+        try {
+            var restart=new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) {UseShellExecute=false,ArgumentList={"--safe-rendering"}};
+            if(BadgeActivation.Parse(args) is string claim){restart.ArgumentList.Add("--claim-badge");restart.ArgumentList.Add(claim);}
+            System.Diagnostics.Process.Start(restart)?.Dispose();return 0;
+        }
         catch { MessageBox.Show("Restart failed. Reopen the app with --safe-rendering to retry.","Roblox Multi Instance");return 1; }
     }
     static int Run(string[] args)
     {
         if(Array.IndexOf(args,"--launch-notifications")>=0)return RobloxLaunchHelper.LaunchNotificationHost.Run();
+        string? badgePath;try{badgePath=BadgeActivation.Parse(args);}catch(Exception ex){MessageBox.Show(ex.Message,"Recognition file");return 1;}
         bool updates=Array.IndexOf(args,"--updates")>=0;
         if(Array.IndexOf(args,"--check-updates")>=0)
         {
@@ -44,7 +49,7 @@ internal static class Entry
         try { acquired = owner.WaitOne(0); } catch (AbandonedMutexException) { acquired = true; }
         if (!acquired)
         {
-            try { using var pipe = new NamedPipeClientStream(".", name, PipeDirection.Out); pipe.Connect(1500); pipe.WriteByte(updates?(byte)2:(byte)1); }
+            try { using var pipe = new NamedPipeClientStream(".", name, PipeDirection.Out); pipe.Connect(1500); if(badgePath is not null)BadgeActivation.Write(pipe,badgePath);else pipe.WriteByte(updates?(byte)2:(byte)1); }
             catch { MessageBox.Show("The preview is already running. Open it from its taskbar or tray icon.", "Roblox Multi Instance"); }
             return 0;
         }
@@ -56,6 +61,7 @@ internal static class Entry
             var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
             var window = new MainWindow(Array.IndexOf(args, "--smoke") >= 0,safeRendering,Array.IndexOf(args,"--supporter-preview")>=0);
             if(updates)window.RequestUpdates();
+            if(badgePath is not null)window.RequestBadgeClaim(badgePath);
             _ = Task.Run(async () =>
             {
                 while (!stop.IsCancellationRequested)
@@ -68,11 +74,16 @@ internal static class Entry
                         byte[] message = new byte[1];
                         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                         deadline.CancelAfter(1500);
-                        if (await pipe.ReadAsync(message, deadline.Token) == 1 && message[0] is 1 or 2)
-                            _ = app.Dispatcher.BeginInvoke(()=>{window.Reopen();if(message[0]==2)window.RequestUpdates();});
+                        if (await pipe.ReadAsync(message, deadline.Token) == 1)
+                        {
+                            string? claim=message[0]==3?await BadgeActivation.ReadAsync(pipe,deadline.Token):null;
+                            if(message[0] is 1 or 2 or 3)
+                                _ = app.Dispatcher.BeginInvoke(()=>{window.Reopen();if(message[0]==2)window.RequestUpdates();if(claim is not null)window.RequestBadgeClaim(claim);});
+                        }
                     }
                     catch (OperationCanceledException) { }
                     catch (IOException) { }
+                    catch (ArgumentException) { }
                 }
             });
             int result=app.Run(window);return window.RestartInSafeRendering?72:result;

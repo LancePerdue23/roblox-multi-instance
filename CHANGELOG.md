@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — private validation prereleases
+
+- Replace the global app-only launch action with Launch games: repeat the last setup, edit or create a batch, review its accounts and layout, and follow progress or cancel pending launches. Preserve Open Roblox app as a secondary action.
+- Support Grid and Columns alongside saved launch layouts, remember ordered account setups, and preserve the Play page's draft while using the quick launcher.
+- Add confirmed Stop all for listed Roblox clients, including background clients, with process-lifetime validation and per-client results.
+- Add guided account creation through Roblox's official signup page, explicit autofill/refill controls, protected supplied-credential storage and interrupted-signup recovery.
+- Add signed account-bound cosmetic recognition, badge-file activation and per-badge appearance controls. Packages include the public verification key only.
+- Offer explicit repository-trusted updates in unsigned builds; pinned builds continue to require their configured publisher signature. Private prereleases remain manual downloads.
+- Harden account-creation cancellation, password controls, launch focus and automatic-layout coordination. Add native, backend, browser and shared-service regression coverage.
+- Exclude owner-local files and preview tools from Git/release inputs, and omit distribution debug symbols and developer source paths. Validate release versions against the shared product version.
+- Focused live checks were completed by the owner. These unsigned private tester builds do not claim completion of the broader isolated Windows install/update/accessibility matrix. Roblox's close-to-tray interaction is documented; this version does not replace Roblox's window-close behavior.
+
 ## 1.0.1 — validation prereleases
 
 - Keep Activity's launch-history table independent of the Instances preview switch.

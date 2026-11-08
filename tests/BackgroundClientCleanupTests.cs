@@ -8,6 +8,44 @@ internal static class BackgroundClientCleanupTests
     private static void Check(bool value) { if (!value) throw new Exception("Background cleanup assertion failed."); }
     internal static void Run(Action<string, Action> run)
     {
+        run("Explicit Stop All ends a visible client once per lifetime without graceful close", () =>
+        {
+            var process = new FakeProcess { Visible = () => true };
+            var result = new InstanceStopAll(_ => process, _ => true, "synthetic-owner", 7).Execute([Key, Key], default);
+            Check(process.Stops == 1 && process.Disposed && result.Outcome == OperationOutcome.Succeeded);
+            Check(result.Items!.Length == 1 && result.Message.Contains("1 stopped"));
+        });
+        run("Stop All skips changed lifetimes, owners, sessions, elevated and untrusted clients", () =>
+        {
+            foreach (var identity in new[] { ValidIdentity with { Created = Key.Created + 1 }, ValidIdentity with { Sid = "other" },
+                ValidIdentity with { Session = 8 }, ValidIdentity with { Elevated = true }, ValidIdentity with { Image = @"C:\Synthetic\Other.exe" } })
+            {
+                var process = new FakeProcess { Identity = identity };
+                var result = new InstanceStopAll(_ => process, _ => true, "synthetic-owner", 7).Execute([Key], default);
+                Check(process.Stops == 0 && result.Items!.Single().Code == "Skipped");
+            }
+            var untrusted = new FakeProcess();
+            new InstanceStopAll(_ => untrusted, _ => false, "synthetic-owner", 7).Execute([Key], default);
+            Check(untrusted.Stops == 0);
+        });
+        run("Stop All reports partial failure and unconfirmed exits and honors cancellation", () =>
+        {
+            var first = new FakeProcess();
+            var second = new FakeProcess { Identity = ValidIdentity with { Created = Key.Created + 1 }, Exited = false };
+            var third = new FakeProcess { Identity = ValidIdentity with { Created = Key.Created + 2 }, StopResult = false };
+            var result = new InstanceStopAll(pid => pid == 42 ? first : pid == 43 ? second : third, _ => true, "synthetic-owner", 7)
+                .Execute([Key, new(43, Key.Created + 1), new(44, Key.Created + 2)], default);
+            Check(result.Outcome == OperationOutcome.PartiallySucceeded && result.Message.Contains("1 stopped, 0 skipped, 1 failed, 1 unconfirmed"));
+            using var canceled = new CancellationTokenSource();
+            var process = new FakeProcess();
+            try
+            {
+                new InstanceStopAll(_ => process, _ => { canceled.Cancel(); return true; }, "synthetic-owner", 7).Execute([Key], canceled.Token);
+                throw new Exception("Cancellation ignored.");
+            }
+            catch (OperationCanceledException) { }
+            Check(process.Stops == 0 && process.Disposed);
+        });
         run("Automatic background cleanup requires continuous windowless observations and resets after gaps", () =>
         {
             var row = new ActiveInstance(Key, [], null, null, false);

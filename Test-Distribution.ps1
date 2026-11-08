@@ -1,5 +1,10 @@
-param([string]$Artifacts=(Join-Path $PSScriptRoot 'artifacts'),[version]$ExpectedVersion='1.0.0.0',[switch]$RequireSigned)
+param([string]$Artifacts=(Join-Path $PSScriptRoot 'artifacts'),[version]$ExpectedVersion,[switch]$RequireSigned)
 $ErrorActionPreference='Stop'
+if($null -eq $ExpectedVersion){
+    [xml]$taskVersionProps=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Directory.Build.props') -Raw
+    $taskProductVersion=[version]$taskVersionProps.Project.PropertyGroup.Version
+    $ExpectedVersion=[version]::new($taskProductVersion.Major,$taskProductVersion.Minor,[Math]::Max(0,$taskProductVersion.Build),[Math]::Max(0,$taskProductVersion.Revision))
+}
 $taskManifest=Get-Content -LiteralPath (Join-Path $Artifacts 'assets.json') -Raw | ConvertFrom-Json
 if($RequireSigned -and !$taskManifest.Release){throw 'Signed release artifacts required; these are unsigned validation artifacts.'}
 if($taskManifest.Release -and $taskManifest.PublisherCertificateSha256 -notmatch '\A[a-fA-F0-9]{64}\z'){throw 'Signed release publisher fingerprint is missing or malformed.'}
@@ -57,6 +62,8 @@ try {
             $taskVersionFile=Join-Path $taskVersionDirectory $taskEntry.FullName
             [IO.Compression.ZipFileExtensions]::ExtractToFile($taskEntry,$taskVersionFile)
             if([version][Diagnostics.FileVersionInfo]::GetVersionInfo($taskVersionFile).FileVersion -ne $ExpectedVersion){throw "Portable product version mismatch: $($taskEntry.FullName)"}
+            $taskBinaryBytes=[IO.File]::ReadAllBytes($taskVersionFile)
+            if([Text.Encoding]::UTF8.GetString($taskBinaryBytes) -match '(?i)[a-z]:[\\/]+Users[\\/]+' -or [Text.Encoding]::Unicode.GetString($taskBinaryBytes) -match '(?i)[a-z]:[\\/]+Users[\\/]+'){throw "Developer user-profile path embedded in release binary: $($taskEntry.FullName)"}
         }
     }
     if($taskSeen.Count -ne $taskExpected.Count+1 -or !$taskSeen.ContainsKey('payload.json')){throw 'Incomplete portable payload.'}

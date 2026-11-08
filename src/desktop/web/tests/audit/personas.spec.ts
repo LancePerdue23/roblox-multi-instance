@@ -14,7 +14,7 @@ test('basic: first launch and all destinations',async({page})=>{
   expect((await recordedCalls(page)).some(c=>['launch','system.maintenance','system.integration'].includes(c.command))).toBe(false);
 });
 test('basic: missing helper disables launch and offers setup',async({page})=>{
-  await installScenario(page,{helperInstalled:false});await expect(page.getByRole('button',{name:'Launch Roblox',exact:true})).toBeDisabled();
+  await installScenario(page,{helperInstalled:false});await page.getByRole('button',{name:'Launch games',exact:true}).click();await expect(page.getByRole('button',{name:'Open Roblox app ↗',exact:true})).toBeDisabled();await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Health',exact:true}).click();
   await expect(page.getByRole('button',{name:'Set up helper…',exact:true})).toBeVisible();
   expect((await recordedCalls(page)).filter(c=>c.command==='launch')).toHaveLength(0);

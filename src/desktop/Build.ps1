@@ -1,4 +1,4 @@
-param([string]$Dotnet = (Join-Path $PSScriptRoot '..\..\.build\sdk\dotnet.exe'), [switch]$SkipFrontend, [string]$Output = "", [string]$TelemetryEndpoint="", [string]$SupportConfig="", [string]$UpdatePublisherSha256="")
+param([string]$Dotnet = (Join-Path $PSScriptRoot '..\..\.build\sdk\dotnet.exe'), [switch]$SkipFrontend, [string]$Output = "", [string]$TelemetryEndpoint="", [string]$SupportConfig="", [string]$UpdatePublisherSha256="", [switch]$OmitSymbols)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $taskOutput = if ($Output) { [IO.Path]::GetFullPath($Output) } else { Join-Path $taskRoot '.build\desktop' }
@@ -11,6 +11,7 @@ if (Test-Path -LiteralPath $taskExistingExe) {
 $taskOriginalHome = $env:DOTNET_CLI_HOME
 $taskOriginalPackages = $env:NUGET_PACKAGES
 $taskFeatureProperties=@("-p:TelemetryEndpoint=$TelemetryEndpoint", "-p:UpdatePublisherSha256=$UpdatePublisherSha256")
+if($OmitSymbols){$taskFeatureProperties+=@('-p:DebugType=none','-p:DebugSymbols=false',"-p:PathMap=$taskRoot=/_/")}
 if($SupportConfig){$taskFeatureProperties+="-p:SupportConfigPath=$([IO.Path]::GetFullPath($SupportConfig))"}
 try {
     $env:DOTNET_CLI_HOME = Join-Path $taskRoot '.build\home'

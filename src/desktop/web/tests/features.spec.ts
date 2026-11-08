@@ -33,7 +33,8 @@ test('account rows highlight fully and keep status and group columns aligned',as
  const highlighted=await rows.first().evaluate(row=>getComputedStyle(row).backgroundColor);
  expect(highlighted).not.toBe('rgba(0, 0, 0, 0)');
  expect(await rows.first().locator('.account-identity').evaluate(node=>getComputedStyle(node).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
- await rows.first().locator('.account-status').hover();
+ await expect(rows.first().locator('.account-status')).toBeEmpty();
+ await rows.first().locator('.account-group-cell').hover();
  expect(await rows.first().evaluate(row=>getComputedStyle(row).backgroundColor)).toBe(highlighted);
  await page.screenshot({path:'../../../.build/accounts-row-alignment.png',fullPage:true});
  await page.setViewportSize({width:900,height:960});
@@ -73,6 +74,7 @@ test('Accounts separates profile management from Play and preserves both selecti
  await profile.getByRole('button',{name:'Organize',exact:true}).click();
  await profile.getByRole('textbox',{name:'Notes',exact:true}).fill('Updated account notes');
  await profile.getByRole('button',{name:'Save account details',exact:true}).click();
+ await expect(profile.getByRole('textbox',{name:'Notes',exact:true})).toHaveCount(0);
  await expect(profile.getByText('Updated account notes',{exact:true})).toBeVisible();
  await page.getByRole('group',{name:'Account groups',exact:true}).getByRole('button',{name:'Main 1',exact:true}).click();
  await expect(page.locator('.account-row')).toHaveCount(1);
@@ -217,13 +219,13 @@ test('configured Stripe starts only after an explicit click while Robux remains 
 test('verified cosmetic badge can be hidden and removed without changing launch access',async({page})=>{
  await page.goto('/?supporter-verified');await expect(page.locator('.sidebar-supporter')).toBeVisible();
  await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});
- await expect(page.getByRole('button',{name:'Launch Roblox',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Launch games',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Support development',exact:true}).click();
  await page.getByLabel('Show my supporter badge').uncheck();await expect(page.locator('.sidebar-supporter')).toHaveCount(0);
  await page.getByRole('button',{name:'Remove receipt…'}).click();await expect(page.getByRole('dialog')).toContainText('Export it first');
  expect(await page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(c=>c.command==='support.remove'))).toHaveLength(0);
  await page.getByRole('button',{name:'Remove supporter receipt',exact:true}).click();await expect(page.getByLabel('Show my supporter badge')).toBeDisabled();
- await expect(page.getByRole('button',{name:'Launch Roblox',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Launch games',exact:true})).toBeEnabled();
 });
 
 test('account groundwork preserves selection order and clearly gates automatic launch',async({page})=>{

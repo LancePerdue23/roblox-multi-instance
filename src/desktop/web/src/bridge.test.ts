@@ -48,4 +48,11 @@ describe('desktop bridge',()=>{
   receive({data:{version:1,id:sent[1].id,data:{canceled:true}}});receive({data:{version:1,id:sent[0].id,data:{}}});await batch;
   expect(bridge.conflicts('layouts.apply')).toBe(false);
  });
+it('blocks creation against launches in both directions while allowing account reads',async()=>{const bridge=await import('./bridge');for(const command of ['accounts.create','accounts.credentials.open']){expect(bridge.category(command)).toBe('preferences');expect(bridge.conflicts(command,[{id:'l',command:'accounts.launchBatch',category:'launch',state:'Running',cancelable:true}])).toBe(true);expect(bridge.conflicts('launch',[{id:'c',command,category:'preferences',state:'Running',cancelable:true}])).toBe(true);expect(bridge.conflicts('accounts.state',[{id:'c',command,category:'preferences',state:'Running',cancelable:true}])).toBe(false);}});
+
 });
+
+ it('Stop All conflicts with account launches and other window actions',async()=>{
+  const bridge=await import('./bridge');expect(bridge.category('instances.stopAll')).toBe('windows');
+  expect(bridge.conflicts('instances.stopAll',[{id:'batch',command:'accounts.launchBatch',category:'launch',state:'Running',cancelable:true}])).toBe(true);
+ });

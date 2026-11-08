@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace RobloxMultiInstance;
 
-public sealed record GameCardDto(string PlaceId,string? UniverseId,string? RootPlaceId,string Name,string? Artwork,string ArtworkState="Unavailable",string ArtworkKind="Unknown",string[]? AccountIds=null,string? Preset=null);
+public sealed record GameCardDto(string PlaceId,string? UniverseId,string? RootPlaceId,string Name,string? Artwork,string ArtworkState="Unavailable",string ArtworkKind="Unknown",string[]? AccountIds=null,string? Preset=null,string? Arrangement=null);
 public sealed record PublicServerDto(string Id,int Playing,int MaxPlayers,int? Ping);
 
 // Public metadata requests only. History also stores local account references and layout.

@@ -100,6 +100,18 @@ internal static class Tests
             }
             finally { Registry.CurrentUser.DeleteSubKeyTree(root, false); }
         });
+        Run("Badge file association registers quoted direct activation and preserves foreign ownership",()=>{
+            string root=@"Software\RobloxLaunchHelperTests\"+Guid.NewGuid().ToString("N");
+            try{using var classes=Registry.CurrentUser.CreateSubKey(root);const string exe=@"C:\Fixture App\RobloxMultiInstance.exe";
+                BadgeFileAssociation.Apply(classes,exe,false);
+                using(var command=classes.OpenSubKey(BadgeFileAssociation.ProgId+@"\shell\open\command"))Check((string?)command!.GetValue("")=="\""+exe+"\" --claim-badge \"%1\"");
+                using(var extension=classes.OpenSubKey(".rmibadge",true))extension!.SetValue("","AnotherApp.Badge");
+                BadgeFileAssociation.Apply(classes,exe,false);
+                using(var extension=classes.OpenSubKey(".rmibadge"))Check((string?)extension!.GetValue("")=="AnotherApp.Badge");
+                BadgeFileAssociation.Apply(classes,exe,true);
+                using(var extension=classes.OpenSubKey(".rmibadge"))Check((string?)extension!.GetValue("")=="AnotherApp.Badge");
+            }finally{Registry.CurrentUser.DeleteSubKeyTree(root,false);}
+        });
         Run("Unsigned or non-Roblox executable is rejected", () =>
         {
             Check(!RobloxTrust.IsSignedRoblox(Environment.ProcessPath!));

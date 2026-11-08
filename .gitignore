@@ -64,3 +64,20 @@ Desktop.ini
 **/test-results/
 **/playwright-report/
 **/*.tsbuildinfo
+
+# Private account-bound recognition deliveries
+*.rmibadge
+*.dpapi
+
+# Private local badge workspace and owner instructions
+/badge-owner/
+/BADGE-ISSUING.md
+
+# Machine-local assistant instructions, profiles, and preview launchers
+/AGENTS.md
+/.agents/
+/.codex/
+/.aws/
+/.ssh/
+/Preview-Supporters.cmd
+/Preview-Supporters.ps1

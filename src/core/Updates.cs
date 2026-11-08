@@ -213,8 +213,8 @@ internal interface IUpdateDownloader
 internal sealed class UpdateDownloader(HttpClient client, string staging, Func<string, Version?>? fileVersion = null,
     Func<string,string,CancellationToken,Task>? inspectSetup = null, Action<string>? verifyPublisher = null) : IUpdateDownloader
 {
-    private readonly bool requiresConfiguredPublisher = verifyPublisher is null;
-    private readonly Action<string> verifyPublisher = verifyPublisher ?? UpdatePublisherTrust.Verify;
+
+    private readonly Action<string> verifyPublisher = verifyPublisher ?? UpdatePublisherTrust.VerifyIfConfigured;
     private readonly Func<string, Version?> fileVersion = fileVersion ?? (path => UpdateVersion.Parse(FileVersionInfo.GetVersionInfo(path).FileVersion));
     private readonly Func<string,string,CancellationToken,Task> inspectSetup = inspectSetup ?? InspectSetupAsync;
     private static async Task InspectSetupAsync(string path,string edition,CancellationToken token)
@@ -228,7 +228,7 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
     }
     public async Task<DownloadedUpdate> DownloadAsync(UpdateRelease release, IProgress<long>? progress, CancellationToken token)
     {
-        if(requiresConfiguredPublisher && !UpdatePublisherTrust.IsConfigured)throw new InvalidDataException(UpdatePublisherTrust.MissingIdentity);
+
         var asset = release.Asset ?? throw new InvalidOperationException("No verified download is available.");
         if (!UpdateUrls.RepositoryUrl(asset.Url, "/releases/download/") || asset.Size is <= 0 or > UpdateFiles.MaxDownload) throw new InvalidDataException();
         UpdateFiles.EnsureDirectory(staging);

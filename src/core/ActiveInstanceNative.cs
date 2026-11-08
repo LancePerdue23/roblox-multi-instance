@@ -30,7 +30,7 @@ internal sealed class InstanceProcess : IBackgroundClientProcess, IPerformancePr
     {
         this.pid = pid;
         handle = Native.OpenProcess(InstanceNative.QueryLimitedInformation | InstanceNative.Synchronize |
-            (allowStop ? 0x0001u : 0u), false, pid); // PROCESS_TERMINATE only for explicit background cleanup.
+            (allowStop ? 0x0001u : 0u), false, pid); // PROCESS_TERMINATE for cleanup or confirmed Stop All.
         try
         {
             if (handle.IsInvalid) throw new Win32Exception();

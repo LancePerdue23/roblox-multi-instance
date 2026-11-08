@@ -202,8 +202,8 @@ test('shows a recoverable preference import warning',async({page})=>{
 });
 
  test('shows unsuccessful launch and focus outcomes and uses close-request wording',async({page})=>{
-  await page.goto('/?failure-outcomes');await expect(page.getByRole('button',{name:'Launch Roblox',exact:true})).toBeEnabled();
-  await page.getByRole('button',{name:'Launch Roblox',exact:true}).click();await expect(page.getByRole('alert')).toContainText('unsuccessful or unconfirmed');
+  await page.goto('/?failure-outcomes');await expect(page.getByRole('button',{name:'Launch games',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Launch games',exact:true}).click();await page.getByRole('button',{name:'Open Roblox app ↗',exact:true}).click();await expect(page.getByRole('alert')).toContainText('unsuccessful or unconfirmed');
   await page.getByLabel('Select Roblox — Test window').check();await page.getByRole('button',{name:'Focus',exact:true}).click();await expect(page.getByRole('alert')).toContainText('denied foreground focus');
   await page.getByRole('button',{name:'Close window…',exact:true}).click();await page.getByRole('button',{name:'Close window',exact:true}).click();await expect(page.locator('footer')).toContainText('Close requested.');
  });
@@ -213,6 +213,22 @@ test('shows a recoverable preference import warning',async({page})=>{
   await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Health',exact:true}).click();
   await page.getByRole('button',{name:'Test worker',exact:true}).click();await expect(page.locator('.sidebar-bottom .version')).toContainText('Ready');
   await page.getByRole('button',{name:'Uninstall…',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Uninstall',exact:true}).click();
-  await expect(page.locator('.sidebar-bottom')).toContainText('Not installed');await expect(page.getByRole('button',{name:'Launch Roblox',exact:true})).toBeDisabled();
+  await expect(page.locator('.sidebar-bottom')).toContainText('Not installed');await page.getByRole('button',{name:'Launch games',exact:true}).click();await expect(page.getByRole('button',{name:'Open Roblox app ↗',exact:true})).toBeDisabled();await page.keyboard.press('Escape');
   await page.getByRole('tab',{name:'Version & updates',exact:true}).click();await expect(page.locator('.version-grid')).toContainText('not installed');
+ });
+
+ test('Stop All confirms every listed client without requiring selection and Escape is harmless',async({page})=>{
+  await page.goto('/?two-instances');
+  await expect(page.getByText('Roblox — Second window',{exact:true})).toBeVisible();
+  const stop=page.getByRole('button',{name:'Stop all…',exact:true});
+  await expect(stop).toBeEnabled();await stop.click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog).toContainText('End all 2 listed Roblox clients, including background clients');
+  await expect(dialog).toContainText('unsaved progress may be lost');
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='instances.stopAll'))).toHaveLength(0);
+  await stop.click();await dialog.getByRole('button',{name:'Stop all Roblox clients',exact:true}).click();
+  await expect(page.locator('footer')).toContainText('2 stopped');
+  const calls=await page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='instances.stopAll'));
+  expect(calls).toHaveLength(1);expect(calls[0].payload).toEqual({confirmed:true,ids:['opaque-test-id','second-test-id']});
  });

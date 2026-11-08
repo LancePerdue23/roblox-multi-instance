@@ -46,6 +46,9 @@ static class GameLaunchTests
             await library.Remember(card with {PlaceId="7",AccountIds=["second-local","first-local"],Preset="Two windows"},default);
             var saved=(await reopened.Recent(default))[0];
             Check(saved.AccountIds!.SequenceEqual(new[]{"second-local","first-local"})&&saved.Preset=="Two windows","Recent batch persists account order and layout across reopening");
+            await library.Remember(card with {PlaceId="7",AccountIds=["second-local","first-local"],Preset="",Arrangement="Grid"},default);
+            var quick=(await reopened.Recent(default))[0];
+            Check(quick.Arrangement=="Grid"&&quick.Preset==""&&quick.AccountIds!.SequenceEqual(new[]{"second-local","first-local"}),"Quick layout and ordered account references survive restart without a saved preset");
             await library.Remember(card with {PlaceId="7",AccountIds=["first-local"],Preset=""},default);
             saved=(await reopened.Recent(default))[0];
             Check(saved.AccountIds!.SequenceEqual(new[]{"first-local"})&&saved.Preset==""&&(await reopened.Recent(default)).Count(x=>x.PlaceId=="7")==1,"A changed batch replaces the previous selection for the same game");
