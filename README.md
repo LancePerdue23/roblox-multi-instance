@@ -14,7 +14,7 @@ A Windows workspace for launching, monitoring, and managing multiple Roblox clie
 
 </div>
 
-The download badge refreshes after release publication through GitHub Actions. It totals installer and portable package downloads across published releases, including prereleases; it counts download requests, not unique users. Removed release assets are no longer included. GitHub image caching can delay the displayed count. Maintainers can also run the Refresh download badge workflow manually. It does not run on a schedule. When the repository becomes public, the workflow automatically switches this to a live Shields.io release-download badge, with no recurring counter commits.
+The download badge refreshes only when manually requested during private testing; commits and release publication do not trigger counter updates. It totals installer and portable package downloads across published releases, including prereleases; it counts download requests, not unique users. Removed release assets are no longer included. GitHub image caching can delay the displayed count. Maintainers can also run the Refresh download badge workflow manually. It does not run on a schedule. When the repository becomes public, the workflow automatically switches this to a live Shields.io release-download badge, with no recurring counter commits.
 
 ## Table of contents
 

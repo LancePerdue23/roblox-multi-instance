@@ -1,7 +1,5 @@
 name: Refresh download badge
 on:
-  release:
-    types: [published]
   public:
   workflow_dispatch:
 permissions:
