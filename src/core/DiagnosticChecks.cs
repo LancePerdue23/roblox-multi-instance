@@ -176,6 +176,28 @@ internal static class DiagnosticAccess
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool AccessCheck(byte[] descriptor, SafeAccessTokenHandle token, uint desired,
         ref Mapping mapping, nint privileges, ref uint length, out uint granted, [MarshalAs(UnmanagedType.Bool)] out bool status);
     internal static bool Protected(FileSystemSecurity security) => Protected(new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0));
+    internal static bool ProtectedInstallationMetadata(FileSystemSecurity security) =>
+        ProtectedInstallationMetadata(new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0), Program.Elevated);
+    internal static bool ProtectedInstallationMetadata(RawSecurityDescriptor descriptor, bool elevated)
+    {
+        if (!elevated) return Protected(descriptor);
+        // Setup intentionally has administrator write access. Do not evaluate that
+        // privileged token as if it were the normal user used by diagnostics.
+        // Instead require the protected ACL shape created by ProtectFile: only
+        // Administrators and SYSTEM may receive permissions that change the file.
+        if (descriptor.Owner?.Value != "S-1-5-32-544" || descriptor.DiscretionaryAcl is null ||
+            (descriptor.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0) return false;
+        const int mutationRights = 0x500D0156; // GENERIC_ALL/WRITE plus file and security mutations.
+        foreach (GenericAce entry in descriptor.DiscretionaryAcl)
+        {
+            if (entry is not CommonAce ace || ace.IsCallback) return false;
+            if (ace.AceQualifier == AceQualifier.AccessDenied) continue;
+            if (ace.AceQualifier != AceQualifier.AccessAllowed) return false;
+            if ((ace.AccessMask & mutationRights) != 0 &&
+                ace.SecurityIdentifier.Value is not ("S-1-5-32-544" or "S-1-5-18")) return false;
+        }
+        return true;
+    }
     internal static bool Protected(RawSecurityDescriptor descriptor)
     {
         if (Program.Elevated) throw new InvalidOperationException("Normal token required.");

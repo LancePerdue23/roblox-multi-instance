@@ -30,7 +30,7 @@ internal static class Distribution
     internal static bool UnsupportedProtocol()
     {
         if(!File.Exists(MetadataPath))return false;UpdateFiles.RejectLinks(MetadataPath);
-        if(!DiagnosticAccess.Protected(new FileInfo(MetadataPath).GetAccessControl())||new FileInfo(MetadataPath).Length>1024*1024)throw new InvalidDataException();
+        if(!DiagnosticAccess.ProtectedInstallationMetadata(new FileInfo(MetadataPath).GetAccessControl())||new FileInfo(MetadataPath).Length>1024*1024)throw new InvalidDataException();
         using var document=JsonDocument.Parse(File.ReadAllBytes(MetadataPath));
         return document.RootElement.TryGetProperty("Protocol",out var protocol)&&protocol.TryGetInt32(out int value)&&value!=ProtocolVersion;
     }
@@ -38,7 +38,7 @@ internal static class Distribution
     {
         if(!File.Exists(MetadataPath))return null;
         UpdateFiles.RejectLinks(MetadataPath);
-        if(!DiagnosticAccess.Protected(new FileInfo(MetadataPath).GetAccessControl()))throw new InvalidDataException("Installation metadata is not protected.");
+        if(!DiagnosticAccess.ProtectedInstallationMetadata(new FileInfo(MetadataPath).GetAccessControl()))throw new InvalidDataException("Installation metadata is not protected.");
         if(new FileInfo(MetadataPath).Length>1024*1024)throw new InvalidDataException();
         var data=JsonSerializer.Deserialize<EditionManifest>(File.ReadAllBytes(MetadataPath))??throw new InvalidDataException();
         Validate(data);if(data.OwnerSid!=Program.Sid)throw new InvalidDataException("Installation belongs to another Windows account.");return data;
