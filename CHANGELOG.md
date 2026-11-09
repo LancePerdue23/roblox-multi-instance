@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 — private validation prereleases
+
+- Tolerate transient WebView2 files/directories disappearing during temporary profile cleanup, preventing missing DIPS-wal errors from aborting badge claims for already-saved accounts.
+- Preserve missing-profile idempotence, path/junction guards, signed badge eligibility, and failures for locked/inaccessible files. Add deterministic cleanup race and lock regression checks.
+- Keep unfinished supporter work local and private download-count refresh manual.
+
 ## 1.1.1 — private validation prereleases
 
 - Rebuild the mutable v1.1.1 assets to fix elevated setup calling a normal-token-only metadata permission check. Keep administrator ownership and strict write-permission validation; preserve the normal-user diagnostic checks. Existing downloads must be replaced manually.

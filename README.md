@@ -4,13 +4,13 @@
 
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
-[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.1)
+[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.2)
 [![Downloads](docs/assets/badges/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 ![Windows](docs/assets/badges/windows.svg)
 ![Architecture](docs/assets/badges/architecture.svg)
 ![Status](docs/assets/badges/status.svg)
 
-**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.1.1/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.1.1) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.1.2/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.1.2) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 
 </div>
 
@@ -68,7 +68,7 @@ Release packages include the .NET runtime. Node.js and the .NET SDK are developm
 
 ### 2. Install the recommended edition
 
-1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.1).
+1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.2).
 2. Download and run **`RobloxMultiInstance-Setup.exe`**.
 3. Review the browser Play integration option during setup. It is enabled by default on a fresh installation; upgrades retain your preference.
 4. Open Roblox Multi Instance and check **System → Health** for installation or helper issues.

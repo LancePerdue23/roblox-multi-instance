@@ -11,7 +11,7 @@
       "robloxmultiinstance.backend": {
         "type": "Project",
         "dependencies": {
-          "RobloxMultiInstance.Core": "[1.1.1, )"
+          "RobloxMultiInstance.Core": "[1.1.2, )"
         }
       },
       "robloxmultiinstance.core": {
@@ -20,7 +20,7 @@
       "robloxmultiinstance.presentation": {
         "type": "Project",
         "dependencies": {
-          "RobloxMultiInstance.Core": "[1.1.1, )"
+          "RobloxMultiInstance.Core": "[1.1.2, )"
         }
       }
     },

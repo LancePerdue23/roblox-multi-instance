@@ -77,7 +77,7 @@ public sealed class WindowsAccountVault(string directory) : IAccountVault
 internal sealed record SavedAccount(string Id,string Nickname,string RobloxUserId,string Username,string Group="",string Notes="",string Color="",bool Favorite=false,bool BypassOptimizations=false);
 internal sealed record AccountFile(int Version,SavedAccount[] Accounts);
 
-internal sealed class AccountStore(string directory)
+internal sealed class AccountStore(string directory, Func<string,IEnumerable<string>>? enumerateProfileEntries=null)
 {
     readonly string root=Path.GetFullPath(directory);
     string FilePath => Path.Combine(root,"accounts.json");
@@ -137,24 +137,43 @@ internal sealed class AccountStore(string directory)
         ValidateTree(path);
         DeleteDirectory(path);
     }
-    static void ValidateTree(string path)
+    IEnumerable<string> ProfileEntries(string path)
+    {
+        try { return (enumerateProfileEntries??Directory.EnumerateFileSystemEntries)(path).ToArray(); }
+        catch(FileNotFoundException) { return []; }
+        catch(DirectoryNotFoundException) { return []; }
+    }
+    static bool TryProfileAttributes(string path,out FileAttributes attributes)
+    {
+        try { attributes=File.GetAttributes(path);return true; }
+        catch(FileNotFoundException) { attributes=default;return false; }
+        catch(DirectoryNotFoundException) { attributes=default;return false; }
+    }
+    void ValidateTree(string path)
     {
         AccountStorageSecurity.ValidatePath(path);
-        foreach(var item in Directory.EnumerateFileSystemEntries(path))
+        foreach(var item in ProfileEntries(path))
         {
             AccountStorageSecurity.ValidatePath(item);
-            if((File.GetAttributes(item)&FileAttributes.Directory)!=0)ValidateTree(item);
+            if(TryProfileAttributes(item,out var attributes)&&(attributes&FileAttributes.Directory)!=0)ValidateTree(item);
         }
     }
-    static void DeleteDirectory(string path)
+    void DeleteDirectory(string path)
     {
-        foreach(var item in Directory.EnumerateFileSystemEntries(path))
+        foreach(var item in ProfileEntries(path))
         {
-            AccountStorageSecurity.ValidatePath(item);var attributes=File.GetAttributes(item);
+            AccountStorageSecurity.ValidatePath(item);if(!TryProfileAttributes(item,out var attributes))continue;
             if((attributes&FileAttributes.Directory)!=0)DeleteDirectory(item);
-            else File.Delete(item);
+            else
+            {
+                try { File.Delete(item); }
+                catch(FileNotFoundException) { }
+                catch(DirectoryNotFoundException) { }
+            }
         }
-        AccountStorageSecurity.ValidatePath(path);Directory.Delete(path);
+        AccountStorageSecurity.ValidatePath(path);
+        try { Directory.Delete(path); }
+        catch(DirectoryNotFoundException) { }
     }
 }
 
