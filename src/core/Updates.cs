@@ -85,7 +85,7 @@ internal sealed class UpdateAttemptStore(string directory, string mutexName) : I
     }
 }
 
-internal sealed record UpdateAsset(string Name, Uri Url, long Size, string Sha256);
+internal sealed record UpdateAsset(string Name, Uri Url, long Size, string Sha256, Uri? ApiUrl=null);
 internal sealed record UpdateRelease(Version Version, string Title, string Notes, Uri Page, UpdateAsset? Asset, string? DownloadProblem);
 internal interface IReleaseSource { Task<UpdateRelease?> LatestAsync(CancellationToken token); }
 internal static class UpdateUrls
@@ -95,32 +95,45 @@ internal static class UpdateUrls
     internal static bool RepositoryUrl(Uri uri, string suffix) => uri.IsAbsoluteUri && uri.Scheme == "https" && uri.IsDefaultPort &&
         uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(uri.UserInfo) &&
         uri.AbsolutePath.StartsWith("/" + Repository + suffix, StringComparison.Ordinal) && string.IsNullOrEmpty(uri.Fragment);
+    internal static bool AssetApi(Uri uri) => uri.IsAbsoluteUri && uri.Scheme=="https" && uri.IsDefaultPort && uri.Host=="api.github.com" && uri.UserInfo.Length==0 && uri.Query.Length==0 && uri.Fragment.Length==0 && Regex.IsMatch(uri.AbsolutePath,"\\A/repos/"+Repository+"/releases/assets/[0-9]+\\z");
     internal static bool DownloadRedirect(Uri uri) => uri.IsAbsoluteUri && uri.Scheme == "https" && uri.IsDefaultPort && string.IsNullOrEmpty(uri.UserInfo) &&
         (RepositoryUrl(uri, "/releases/download/") || uri.Host is "release-assets.githubusercontent.com" or "objects.githubusercontent.com");
 }
-internal sealed class GitHubReleaseSource(HttpClient client) : IReleaseSource
+internal sealed class GitHubReleaseSource(HttpClient client, Func<string?>? credential=null, Func<bool>? prereleases=null) : IReleaseSource
 {
     public async Task<UpdateRelease?> LatestAsync(CancellationToken token)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(10));
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{UpdateUrls.Repository}/releases/latest");
+        var access=(credential??UpdateAccess.ReadToken)();
+        bool preview=(prereleases??(()=>UpdateAccess.IncludePrereleases))();
+        bool list=access is not null||preview;
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{UpdateUrls.Repository}/releases"+(list?"?per_page=100":"/latest"));
+        if(access is not null)request.Headers.Authorization=new("Bearer",access);
         request.Headers.UserAgent.ParseAdd("RobloxLaunchHelper/" + typeof(Program).Assembly.GetName().Version);
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        if(response.StatusCode==HttpStatusCode.NotFound)throw new UserError("GitHub could not find an accessible release. For this private repository, connect GitHub update access and enable validation prereleases.");
+        if(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)throw new UserError("GitHub update access was denied. Check your token, repository access, and API rate limit.");
         response.EnsureSuccessStatusCode();
         using var content = await response.Content.ReadAsStreamAsync(timeout.Token);
         using var bytes = new MemoryStream();
         await UpdateFiles.CopyBoundedAsync(content, bytes, 1024 * 1024, null, timeout.Token);
-        return Parse(bytes.ToArray(), Distribution.Installed()?.Edition);
+        return list?ParseList(bytes.ToArray(),Distribution.Installed()?.Edition,preview):Parse(bytes.ToArray(), Distribution.Installed()?.Edition);
     }
-    internal static UpdateRelease? Parse(byte[] json,string? edition=null)
+    internal static UpdateRelease? ParseList(byte[] json,string? edition,bool preview)
+    {
+        using var document=JsonDocument.Parse(json,new JsonDocumentOptions {MaxDepth=32});
+        return document.RootElement.EnumerateArray().Select(item=>Parse(System.Text.Encoding.UTF8.GetBytes(item.GetRawText()),edition,preview)).Where(r=>r is not null).OrderByDescending(r=>r!.Version).ThenByDescending(r=>r!.Asset is not null).FirstOrDefault();
+    }
+    internal static UpdateRelease? Parse(byte[] json,string? edition=null,bool preview=false)
     {
         using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
         var root = document.RootElement;
-        if (root.GetProperty("draft").GetBoolean() || root.GetProperty("prerelease").GetBoolean()) return null;
-        var version = UpdateVersion.Parse(root.GetProperty("tag_name").GetString());
+        if (root.GetProperty("draft").GetBoolean() || (root.GetProperty("prerelease").GetBoolean()&&!preview)) return null;
+        string? tag=root.GetProperty("tag_name").GetString();
+        if(tag?.StartsWith("helper-v",StringComparison.Ordinal)==true) { if(edition!="Helper")return null;tag=tag[7..]; }
+        var version = UpdateVersion.Parse(tag);
         if (version is null) return null;
         if (!Uri.TryCreate(root.GetProperty("html_url").GetString(), UriKind.Absolute, out var page) || !UpdateUrls.RepositoryUrl(page, "/releases/tag/"))
             throw new InvalidDataException("Invalid release page.");
@@ -141,7 +154,11 @@ internal sealed class GitHubReleaseSource(HttpClient client) : IReleaseSource
                 problem = "This release has an unsupported download size.";
             else if (!Uri.TryCreate(item.GetProperty("browser_download_url").GetString(), UriKind.Absolute, out var url) || !UpdateUrls.RepositoryUrl(url, "/releases/download/"))
                 problem = "This release has an unsupported download address.";
-            else { asset = new(assetName, url, size, digest[7..].ToUpperInvariant()); problem = null; }
+            else {
+                Uri? api=null;
+                if(item.TryGetProperty("url",out var apiValue)&&Uri.TryCreate(apiValue.GetString(),UriKind.Absolute,out var parsed)&&UpdateUrls.AssetApi(parsed))api=parsed;
+                asset = new(assetName, url, size, digest[7..].ToUpperInvariant(),api); problem = null;
+            }
         }
         return new(version, title, notes, page, asset, problem);
     }
@@ -211,7 +228,7 @@ internal interface IUpdateDownloader
     Task VerifyAsync(string path, UpdateRelease release, CancellationToken token);
 }
 internal sealed class UpdateDownloader(HttpClient client, string staging, Func<string, Version?>? fileVersion = null,
-    Func<string,string,CancellationToken,Task>? inspectSetup = null, Action<string>? verifyPublisher = null) : IUpdateDownloader
+    Func<string,string,CancellationToken,Task>? inspectSetup = null, Action<string>? verifyPublisher = null, Func<string?>? credential=null) : IUpdateDownloader
 {
 
     private readonly Action<string> verifyPublisher = verifyPublisher ?? UpdatePublisherTrust.VerifyIfConfigured;
@@ -241,7 +258,7 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeout.CancelAfter(TimeSpan.FromMinutes(10));
-            using var response = await GetAsync(asset.Url, timeout.Token);
+            using var response = await GetAsync(asset.ApiUrl is not null&&(credential??UpdateAccess.ReadToken)() is not null?asset.ApiUrl:asset.Url, timeout.Token);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength is long length && length != asset.Size) throw new InvalidDataException("Unexpected download size.");
             await using (var input = await response.Content.ReadAsStreamAsync(timeout.Token))
@@ -264,10 +281,16 @@ internal sealed class UpdateDownloader(HttpClient client, string staging, Func<s
     {
         for (int count = 0; count < 6; count++)
         {
-            if (!UpdateUrls.DownloadRedirect(uri)) throw new InvalidDataException("Untrusted download redirect.");
+            if (!UpdateUrls.DownloadRedirect(uri)&&!(count==0&&UpdateUrls.AssetApi(uri))) throw new InvalidDataException("Untrusted download redirect.");
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.UserAgent.ParseAdd("RobloxLaunchHelper-Updater");
+            if(count==0&&UpdateUrls.AssetApi(uri)) {
+                var access=(credential??UpdateAccess.ReadToken)();
+                if(access is not null)request.Headers.Authorization=new("Bearer",access);
+                request.Headers.Accept.ParseAdd("application/octet-stream");
+            }
             var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            if(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound) { response.Dispose();throw new UserError("Update download access failed. Reconnect GitHub update access or use the release page."); }
             if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308)) return response;
             var location = response.Headers.Location; response.Dispose();
             if (location is null) throw new InvalidDataException("Missing download redirect.");

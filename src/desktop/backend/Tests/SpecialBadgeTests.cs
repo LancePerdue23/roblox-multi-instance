@@ -47,6 +47,16 @@ internal static class SpecialBadgeTests
         check(new SpecialBadgeService(Path.Combine(root,"shared"),pub).State(["123"]).Badges.Single().RobloxUserId=="123"&&sharedService.State(["456"]).Badges.Length==0,"Shared list cannot grant unclaimed accounts after restart");
         File.WriteAllText(path,shared);check(sharedService.Import(path,shared,"123").StartsWith("Recognition already claimed.")&&!File.Exists(path),"Repeated shared claim is idempotent and consumes delivery");
         File.WriteAllText(path,shared);sharedService.Import(path,shared,"456");check(sharedService.State(["123","456"]).Badges.Length==2,"Same shared file can independently recognize another verified tester");
+        foreach(var (id,title) in new[]{("bug-hunter","Bug Hunter"),("contributor","Contributor"),("founder","Founder")}){
+            var grant=sharedGrant with {Badge=id,Title=title,EligibleHashes=[SpecialBadgeService.EligibilityHash(salt,"123")]};
+            var signed=Shared(grant);File.WriteAllText(path,signed);
+            try{sharedService.Import(path,signed,"456");throw new Exception("Wrong badge recipient accepted");}catch(InvalidOperationException){check(File.Exists(path),title+" requires its own signed eligibility");}
+            sharedService.Import(path,signed,"123");
+            File.WriteAllText(path,signed);check(sharedService.Import(path,signed,"123").StartsWith("Recognition already claimed."),title+" repeated claim is idempotent");
+        }
+        var collection=new SpecialBadgeService(Path.Combine(root,"shared"),pub);
+        check(collection.State(["123"]).Badges.Select(b=>b.Id).Order().SequenceEqual(new[]{"alpha-tester","bug-hunter","contributor","founder"}),"All four badge kinds coexist after restart on one verified account");
+        check(collection.State(["456"]).Badges.Single().Id=="alpha-tester"&&collection.State([]).Badges.Length==0,"Multiple grants preserve account-specific visibility");
         var manager=new AccountManager(Path.Combine(root,"claim-accounts"));
         string Claim(string? id)=>manager.ClaimRecognitionAsync(user=>sharedService.Eligible(sharedGrant,user),(request,token)=>Task.FromResult(id is null?null:new AccountIdentity(id,"FixtureTester")),CancellationToken.None).GetAwaiter().GetResult();
         try{Claim(null);throw new Exception("Canceled claim accepted");}catch(OperationCanceledException){check(manager.State().Accounts.Length==0,"Canceled first-time claim saves no account");}

@@ -23,7 +23,7 @@ export async function installWorkspace(page:Page){
   if(location.search.includes('launch-testing'))Object.assign(accounts,{launchAvailable:true,notice:'Saved-account launching is available for testing.'});
   if(location.search.includes('supporter-verified'))Object.assign(support,{supported:true,showBadge:true,receiptAvailable:true,message:'Thank you for supporting development. Your badge works offline.'});
   const responses:Record<string,unknown>={
-   'games.recent':[],'games.remove':[],'games.clear':[],
+   'updates.access':{connected:false,prereleases:false},'updates.connect':{connected:true,prereleases:false},'updates.disconnect':{connected:false,prereleases:false},'updates.prereleases':{connected:true,prereleases:true},'games.recent':[],'games.remove':[],'games.clear':[],
    'previews.configure':{supported:true,sources:[]},'previews.stop':{stopped:true},
    'app.state':{version:'fixture',helperVersion:'1.1.0',helperInstalled:true,readiness:'Installed — not tested'},
    'settings.get':settings,'host.state':{tray:false,shortcuts:false},'background.status':{enabled:false,owns:false,waiting:false},

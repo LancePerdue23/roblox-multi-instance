@@ -40,6 +40,40 @@ internal static class UpdateTests
     private static void Async(Func<Task> task) => Task.Run(task).GetAwaiter().GetResult();
     internal static void Run(Action<string, Action> run)
     {
+        run("Private update metadata uses authenticated bounded release lists and explicit prerelease opt-in",()=>Async(async()=>
+        {
+            var list=JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json(prerelease:true))});
+            using var client=Client(request=>{
+                Check(request.RequestUri!.AbsoluteUri=="https://api.github.com/repos/"+UpdateUrls.Repository+"/releases?per_page=100");
+                Check(request.Headers.Authorization?.Parameter=="fixture-token");
+                return new(HttpStatusCode.OK){Content=new ByteArrayContent(list)};
+            });
+            Check(await new GitHubReleaseSource(client,()=>"fixture-token",()=>false).LatestAsync(default) is null);
+            Check((await new GitHubReleaseSource(client,()=>"fixture-token",()=>true).LatestAsync(default))?.Version==New);
+            var helper=JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json(tag:"helper-v1.2.0",prerelease:true))});
+            Check(GitHubReleaseSource.ParseList(helper,"Desktop",true) is null);
+            Check(GitHubReleaseSource.ParseList(helper,"Helper",true)?.Version==New);
+            using var denied=Client(_=>new(HttpStatusCode.Unauthorized));
+            try { await new GitHubReleaseSource(denied,()=>"fixture-token",()=>true).LatestAsync(default);throw new Exception("Expected access failure"); } catch(UserError error) { Check(!error.Message.Contains("fixture-token")); }
+        }));
+        run("Private asset download authenticates only the API request and strips credentials on redirects",()=>Async(async()=>
+        {
+            string directory=Path.Combine(AppContext.BaseDirectory,"private-update-"+Guid.NewGuid().ToString("N"));
+            var api=new Uri("https://api.github.com/repos/"+UpdateUrls.Repository+"/releases/assets/123");
+            int calls=0;
+            using var client=Client(request=>{
+                calls++;
+                if(calls==1) { Check(request.RequestUri==api&&request.Headers.Authorization?.Parameter=="fixture-token");Check(request.Headers.Accept.Any(x=>x.MediaType=="application/octet-stream"));return new(HttpStatusCode.Redirect){Headers={Location=new("https://release-assets.githubusercontent.com/fixture")}}; }
+                Check(request.Headers.Authorization is null);return new(HttpStatusCode.OK){Content=new ByteArrayContent(Payload)};
+            });
+            try {
+                var release=Release();release=release with {Asset=release.Asset! with {ApiUrl=api}};
+                using var downloaded=await new UpdateDownloader(client,directory,_=>New,(_,_,_)=>Task.CompletedTask,_=>{},()=>"fixture-token").DownloadAsync(release,null,default);
+                Check(calls==2&&File.Exists(downloaded.Executable));
+                Check(!UpdateUrls.AssetApi(new Uri("https://api.github.com/repos/evil/repo/releases/assets/123")));
+                Check(!UpdateUrls.AssetApi(new Uri(api+"?token=secret")));
+            } finally { if(Directory.Exists(directory))Directory.Delete(directory,true); }
+        }));
         run("Updates compare numeric release versions and reject unsupported tags without downgrading", () =>
         {
             Check(UpdateVersion.Parse("v1.1") == Current && UpdateVersion.Parse("1.1.0.0") == Current);
@@ -92,8 +126,8 @@ internal static class UpdateTests
                 Check(request.RequestUri!.Host == "api.github.com" && request.Headers.UserAgent.Count > 0 && request.Headers.Accept.Count > 0);
                 return new(HttpStatusCode.OK) { Content = new ByteArrayContent(Json()) };
             })) Check((await new GitHubReleaseSource(client).LatestAsync(default))!.Version == New);
-            using (var client = Client(_ => new(HttpStatusCode.NotFound))) Check(await new GitHubReleaseSource(client).LatestAsync(default) is null);
-            foreach (var code in new[] { HttpStatusCode.Forbidden, HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable })
+            using (var client = Client(_ => new(HttpStatusCode.NotFound))) { try { await new GitHubReleaseSource(client).LatestAsync(default);throw new Exception("Expected access guidance"); } catch(UserError) {} }
+            foreach (var code in new[] { HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable })
             {
                 using var client = Client(_ => new(code));
                 Throws<HttpRequestException>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());

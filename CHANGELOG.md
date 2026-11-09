@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 — private validation prereleases
+
+- Record setup attempt/version, phases, fixed failure reasons, code locations and native error codes without private exception text or paths. Name the setup log folder in failure messages.
+- Add native GitHub update credential storage, authenticated private release/asset requests, explicit validation-prerelease selection and access-error guidance. Preserve all package verification and explicit download/install actions.
+- Ship new recognition artwork, animations, badge collections and sidebar controls; retain signed account eligibility. Keep new supporter designs and cumulative contributions unpublished.
+- Older versions require one manual update to use private update access. Builds remain unsigned validation prereleases; clean-machine Windows acceptance and the original tester setup failure remain open.
+
 ## 1.1.0 — private validation prereleases
 
 - Replace the global app-only launch action with Launch games: repeat the last setup, edit or create a batch, review its accounts and layout, and follow progress or cancel pending launches. Preserve Open Roblox app as a secondary action.

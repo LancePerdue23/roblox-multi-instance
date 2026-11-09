@@ -12,7 +12,7 @@ internal static class HelperEntry
             if(mode=="--verify")return Launch.VerifyAsync().GetAwaiter().GetResult();
             if(mode=="--verify-protocols"){if(args.Length!=1||Program.Elevated||!Program.IsInstalledExecutable())return 2;Installation.VerifyProtocolRegistration();return 0;}
             if(mode=="--shortcuts"){if(args.Length!=2||args[1] is not ("install" or "remove")||!Program.IsInstalledExecutable())return 2;Installation.Shortcuts(args[1]=="remove");return 0;}
-            if(mode=="--admin-clean"){if(args.Length!=3||!Program.Elevated||args[2]!=Program.Sid||!Program.IsInstalledExecutable())return 2;Installation.Execute(args[1],args[2],silent:true);return 0;}
+            if(mode=="--admin-clean"){if(args.Length!=3||!Program.Elevated||args[2]!=Program.Sid||!Program.IsInstalledExecutable())return 2;SetupDiagnostics.Begin();SetupDiagnostics.Step(SetupStage.VerificationTask);Installation.Execute(args[1],args[2],silent:true);return 0;}
             if(mode=="--admin"){if(args.Length!=3||!Program.Elevated||args[2]!=Program.Sid)return 2;return Installation.ExecuteInWindowsContext(args[1],args[2]);}
             if(mode.StartsWith("--")&&Installation.IsAction(mode[2..]))
             {
@@ -33,6 +33,6 @@ internal static class HelperEntry
         }
         catch(OperationCanceledException){return 1223;}
         catch(System.ComponentModel.Win32Exception ex) when(ex.NativeErrorCode==1223){return 1223;}
-        catch(Exception ex){Log.Write("operation-failed",ex.GetType().Name,ex.HResult);return 1;}
+        catch(Exception ex){if(args.FirstOrDefault()=="--admin-clean")SetupDiagnostics.Failure(ex);Log.Write("operation-failed",ex.GetType().Name,ex.HResult);return 1;}
     }
 }

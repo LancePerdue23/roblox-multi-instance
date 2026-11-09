@@ -4,6 +4,13 @@ describe('desktop bridge',()=>{
  let receive:(event:{data:unknown})=>void;let sent:Record<string,unknown>[];
  beforeEach(()=>{vi.resetModules();vi.useFakeTimers();sent=[];vi.stubGlobal('window',{chrome:{webview:{postMessage:(message:Record<string,unknown>)=>sent.push(message),addEventListener:(_type:string,handler:typeof receive)=>receive=handler}}});});
  afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();});
+ it('serializes update credential and channel changes against checks and downloads',async()=>{
+  const bridge=await import('./bridge');
+  for(const command of ['updates.connect','updates.disconnect','updates.prereleases']){
+   expect(bridge.category(command)).toBe('download');
+   expect(bridge.conflicts(command,[{id:'download',command:'updates.download',category:'download',state:'Running',cancelable:true}])).toBe(true);
+  }
+ });
  it('classifies automatic policy activation and account bypass as writes',async()=>{
   const bridge=await import('./bridge');
   for(const command of ['performance.activate','accounts.optimizationBypass'])expect(bridge.category(command)).toBe('preferences');

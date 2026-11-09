@@ -110,38 +110,49 @@ internal static partial class Installation
     {
         if(!Program.Elevated)throw new UnauthorizedAccessException();
         Distribution.VerifyPayload(source,manifest);
+        SetupDiagnostics.Step(SetupStage.UpgradeValidation);
         var previous=Distribution.Installed();
         bool helperExists=File.Exists(Program.InstalledExe);
         Distribution.ValidateUpgrade(manifest,previous,helperExists,helperExists?FileVersionInfo.GetVersionInfo(Program.InstalledExe).FileVersion:null);
         if(!UpdateInstallReadiness.IsReady(Program.InstalledExe)||!UpdateInstallReadiness.IsReady(Path.Combine(Program.InstallDirectory,"RobloxMultiInstance.exe")))throw new UserError("The installed app or helper is busy. Close its windows and retry. Roblox games may stay open.");
+        SetupDiagnostics.Step(SetupStage.InstallDirectoryProtection);
         ProtectDirectory(Program.InstallRoot,true);ProtectDirectory(Program.InstallDirectory,false);RejectReparseTree(Program.InstallDirectory);
+        SetupDiagnostics.Step(SetupStage.InstallLock);
         using var gate=new Mutex(false,@"Global\RobloxLaunchHelper-Distribution-"+Program.Sid);bool held=false;
         try
         {
             try {held=gate.WaitOne(0);}catch(AbandonedMutexException){held=true;}
             if(!held)throw new UserError("Another setup is running.");
             // Rollback material lives in a protected sibling directory and includes legacy configuration/backups.
+            SetupDiagnostics.Step(SetupStage.RollbackBackup);
             string rollback=Path.Combine(Program.InstallRoot,"rollback-"+Program.Sid+"-"+Guid.NewGuid().ToString("N"));ProtectDirectory(rollback,false);
             var original=Directory.GetFiles(Program.InstallDirectory,"*",SearchOption.AllDirectories).ToArray();
             foreach(string file in original){string target=Path.Combine(rollback,Path.GetRelativePath(Program.InstallDirectory,file));Directory.CreateDirectory(Path.GetDirectoryName(target)!);File.Copy(file,target);ProtectFile(target);}
             try
             {
+                SetupDiagnostics.Step(SetupStage.PayloadCopy);
                 foreach(var item in manifest.Files){string target=Path.Combine(Program.InstallDirectory,item.Path);string directory=Path.GetDirectoryName(target)!;Directory.CreateDirectory(directory);ProtectDirectory(directory,false);if(!File.Exists(target)||!Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(target))).Equals(item.Sha256,StringComparison.OrdinalIgnoreCase))File.Copy(Path.Combine(source,item.Path),target,true);ProtectFile(target);}
                 string pending=Path.Combine(Program.InstallDirectory,"uninstall.pending");if(File.Exists(pending))File.Delete(pending);
+                SetupDiagnostics.Step(SetupStage.InstallerCopy);
                 string installer=Path.Combine(Program.InstallDirectory,"Installer.exe");
                 if(!string.Equals(Environment.ProcessPath,installer,StringComparison.OrdinalIgnoreCase))File.Copy(Environment.ProcessPath!,installer,true);
                 ProtectFile(installer);
                 var installerInfo=new FileInfo(installer);
                 using var installerStream=File.OpenRead(installer);
                 var installedManifest=manifest with {OwnerSid=Program.Sid,Files=[..manifest.Files,new("Installer.exe",installerInfo.Length,Convert.ToHexString(SHA256.HashData(installerStream)))]};
+                SetupDiagnostics.Step(SetupStage.MetadataWrite);
                 File.WriteAllBytes(Distribution.MetadataPath,JsonSerializer.SerializeToUtf8Bytes(installedManifest));ProtectFile(Distribution.MetadataPath);
                 File.WriteAllBytes(Distribution.RequestPath,JsonSerializer.SerializeToUtf8Bytes(new SetupRequest(manifest.Edition,integration,player)));ProtectFile(Distribution.RequestPath);
+                SetupDiagnostics.Step(SetupStage.VerificationTask);
                 int exit=ScheduledWorker.RunCleanInstallerTask(action);
+                Log.Write("edition-setup-verification-result","",exit);
                 if(exit!=0)throw new UserError("Setup verification failed. Existing payload files were restored; check setup logs.");
                 File.Delete(Distribution.RequestPath);
             }
-            catch
+            catch(Exception error)
             {
+                SetupDiagnostics.Failure(error);
+                SetupDiagnostics.Step(SetupStage.Rollback);
                 foreach(var item in manifest.Files){string target=Path.Combine(Program.InstallDirectory,item.Path);if(File.Exists(target)&&!original.Contains(target,StringComparer.OrdinalIgnoreCase))File.Delete(target);}
                 foreach(string file in Directory.GetFiles(rollback,"*",SearchOption.AllDirectories)){string target=Path.Combine(Program.InstallDirectory,Path.GetRelativePath(rollback,file));File.Copy(file,target,true);ProtectFile(target);}
                 if(previous is null&&File.Exists(Distribution.MetadataPath))File.Delete(Distribution.MetadataPath);

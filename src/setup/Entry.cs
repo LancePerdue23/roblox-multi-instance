@@ -17,6 +17,7 @@ internal static class Entry
         Application.EnableVisualStyles();
         try
         {
+            SetupDiagnostics.Begin();
             if(args.Contains("--uninstall")){using var uninstall=new UninstallForm();Application.Run(uninstall);return uninstall.Result;}
             if(args.FirstOrDefault()=="--maintenance-handoff")return MaintenanceHandoff(args);
             if(args.FirstOrDefault()=="--update-handoff")return Handoff(args);
@@ -31,7 +32,7 @@ internal static class Entry
         }
         catch(OperationCanceledException){return 1223;}
         catch(System.ComponentModel.Win32Exception ex) when(ex.NativeErrorCode==1223){return 1223;}
-        catch(Exception ex){if(!args.Contains("--silent")&&!args.Contains("--apply"))MessageBox.Show(ex is UserError?ex.Message:"Setup could not complete. Check setup logs and retry.","Roblox Multi Instance setup");Log.Write("edition-setup-failed",ex.GetType().Name,ex.HResult);return 1;}
+        catch(Exception ex){if(!args.Contains("--silent")&&!args.Contains("--apply"))MessageBox.Show(ex is UserError?ex.Message:"Setup could not complete. Check helper.log in %ProgramFiles%\\RobloxLaunchHelper\\setup-logs and retry.","Roblox Multi Instance setup");SetupDiagnostics.Failure(ex);return 1;}
     }
     internal static string? Option(string[] args,string key){int i=Array.IndexOf(args,key);if(i<0)return null;if(i+1>=args.Length)throw new ArgumentException();return args[i+1];}
     internal static Stream OpenPayload()=>Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip")??throw new UserError("This setup build does not contain a payload. Build installers with Package.ps1.");
@@ -58,13 +59,18 @@ internal static class Entry
     static int Apply(string[] args)
     {
         string action=Option(args,"--action")??"setup";if(action is not ("setup" or "repair" or "recover"))throw new ArgumentException();
-        using var input=OpenPayload();using var zip=new ZipArchive(input,ZipArchiveMode.Read);var manifest=ReadManifest(zip);Distribution.Validate(manifest);
+        SetupDiagnostics.Step(SetupStage.PayloadOpen);
+        using var input=OpenPayload();using var zip=new ZipArchive(input,ZipArchiveMode.Read);
+        SetupDiagnostics.Step(SetupStage.ManifestValidation);
+        var manifest=ReadManifest(zip);Distribution.Validate(manifest);
         // Extract only the compiled manifest allowlist. Reject duplicate, unexpected, or oversized zip members.
         var expected=manifest.Files.ToDictionary(x=>x.Path,StringComparer.OrdinalIgnoreCase);var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        SetupDiagnostics.Step(SetupStage.StagingPrepare);
         string staging=Path.Combine(HelperProgram.InstallRoot,"staging-"+HelperProgram.Sid+"-"+Guid.NewGuid().ToString("N"));
         Installation.PrepareProtectedDirectory(staging);
         try
         {
+            SetupDiagnostics.Step(SetupStage.PayloadExtract);
             foreach(var entry in zip.Entries)
             {
                 if(!seen.Add(entry.FullName))throw new InvalidDataException("Duplicate payload member.");
@@ -73,15 +79,19 @@ internal static class Entry
                 string target=Path.GetFullPath(Path.Combine(staging,item.Path));if(!target.StartsWith(staging+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException();
                 Installation.PrepareProtectedDirectory(Path.GetDirectoryName(target)!);using var source=entry.Open();using var output=new FileStream(target,FileMode.CreateNew,FileAccess.Write,FileShare.None);source.CopyTo(output);if(output.Length!=item.Size)throw new InvalidDataException();
             }
+            SetupDiagnostics.Step(SetupStage.PayloadVerify);
             Distribution.VerifyPayload(staging,manifest);
             Installation.InstallEdition(staging,manifest,!args.Contains("--disable-integration"),Option(args,"--player"),action);
-            return 0;
         }
+        catch(Exception error) { SetupDiagnostics.Failure(error); throw; }
         finally
         {
             // Staging is generated beneath the protected install root and never follows external paths.
+            SetupDiagnostics.Step(SetupStage.Cleanup);
             string full=Path.GetFullPath(staging);if(Path.GetDirectoryName(full)==Path.GetFullPath(HelperProgram.InstallRoot)&&Directory.Exists(full)){UpdateFiles.RejectLinks(full);Directory.Delete(full,true);}
         }
+        SetupDiagnostics.Step(SetupStage.Complete);
+        return 0;
     }
     static int Handoff(string[] args)
     {
@@ -163,7 +173,7 @@ internal sealed class SetupForm : Form
         var candidates=PlayerRecovery.InstalledPlayers().Where(p=>PlayerRecovery.Valid($"\"{p}\" \"%1\"")).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();players.Items.AddRange(candidates);if(candidates.Length==1)players.SelectedIndex=0;
         root.Controls.Add(integration);root.Controls.Add(new Label{Text="Official Roblox player (choose when several are found):",AutoSize=true});root.Controls.Add(players);root.Controls.Add(status);
         var row=new FlowLayoutPanel{AutoSize=true};row.Controls.Add(install);var cancel=new Button{Text="Cancel",AutoSize=true};cancel.Click+=(_,_)=>Close();row.Controls.Add(cancel);root.Controls.Add(row);Controls.Add(root);
-        install.Click+=async (_,_)=>{if(running)return;running=true;install.Enabled=false;cancel.Enabled=false;status.Text="Waiting for Windows administrator approval and setup verification…";try{var options=args.ToList();if(!integration.Checked)options.Add("--disable-integration");if(players.SelectedItem is string player){options.Add("--player");options.Add(player);}else if(candidates.Length>1)throw new UserError("Choose an official Roblox player before installing.");Result=await Task.Run(()=>Entry.Elevate(options.ToArray()));status.Text=Result==0?"Installation and normal-user verification completed.":Result==1223?"Administrator approval canceled. Select Retry setup when ready.":"Setup did not complete. Check setup logs and retry.";if(Result==0){SaveTelemetryConsent(existing);cancel.Text="Close";install.Visible=false;}else install.Text="Retry setup";}catch(Exception ex){Result=ex is System.ComponentModel.Win32Exception native&&native.NativeErrorCode==1223?1223:1;status.Text=Result==1223?"Administrator approval canceled. Select Retry setup when ready.":ex is UserError?ex.Message:"Setup could not complete. Check setup logs and retry.";install.Text="Retry setup";}finally{running=false;install.Enabled=true;cancel.Enabled=true;}};
+        install.Click+=async (_,_)=>{if(running)return;running=true;install.Enabled=false;cancel.Enabled=false;status.Text="Waiting for Windows administrator approval and setup verification…";try{var options=args.ToList();if(!integration.Checked)options.Add("--disable-integration");if(players.SelectedItem is string player){options.Add("--player");options.Add(player);}else if(candidates.Length>1)throw new UserError("Choose an official Roblox player before installing.");Result=await Task.Run(()=>Entry.Elevate(options.ToArray()));status.Text=Result==0?"Installation and normal-user verification completed.":Result==1223?"Administrator approval canceled. Select Retry setup when ready.":"Setup did not complete. Check helper.log in %ProgramFiles%\\RobloxLaunchHelper\\setup-logs and retry.";if(Result==0){SaveTelemetryConsent(existing);cancel.Text="Close";install.Visible=false;}else install.Text="Retry setup";}catch(Exception ex){SetupDiagnostics.Failure(ex);Result=ex is System.ComponentModel.Win32Exception native&&native.NativeErrorCode==1223?1223:1;status.Text=Result==1223?"Administrator approval canceled. Select Retry setup when ready.":ex is UserError?ex.Message:"Setup could not complete. Check helper.log in %ProgramFiles%\\RobloxLaunchHelper\\setup-logs and retry.";install.Text="Retry setup";}finally{running=false;install.Enabled=true;cancel.Enabled=true;}};
         FormClosing+=(_,e)=>{if(running)e.Cancel=true;};
     }
     void SaveTelemetryConsent(bool existing)

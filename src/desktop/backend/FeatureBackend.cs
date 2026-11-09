@@ -93,7 +93,7 @@ public sealed partial class DesktopBackend
                 var user=await accounts.ClaimRecognitionAsync(id=>specialBadges.Eligible(grant,id),AccountSignIn,token);
                 token.ThrowIfCancellationRequested();
                 var message=specialBadges.Import(path,receipt,user);
-                var state=BadgeState() with {Message=message};Event?.Invoke(requestId.Value??"recognition","badges.changed",state);return state;
+                var state=BadgeState() with {Message=message,ClaimedBadgeId=grant.Badge};Event?.Invoke(requestId.Value??"recognition","badges.changed",state);return state;
             }
             case "support.get": return SupportState(await support.CheckRobloxAsync(accounts.State().Accounts.Select(a=>a.RobloxUserId??""),token:token));
             case "support.checkRoblox": return SupportState(await support.CheckRobloxAsync(accounts.State().Accounts.Select(a=>a.RobloxUserId??""),true,token));

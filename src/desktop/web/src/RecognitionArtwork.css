@@ -1,0 +1,160 @@
+/* Alpha: the first windows and their guiding star. */
+.alpha-symbol{--alpha-seq:2000ms}
+.alpha-window,.alpha-first-star,.alpha-star-rays{transform-box:view-box;transform-origin:48px 48px}
+.alpha-pane{fill:color-mix(in srgb,var(--alpha-start) 24%,var(--bg));stroke:var(--alpha-start);stroke-width:1.8}
+.alpha-front .alpha-pane{fill:color-mix(in srgb,var(--alpha-start) 32%,var(--bg));stroke:var(--alpha-end)}
+.alpha-shadow{fill:var(--bg);opacity:.75}
+.alpha-line{stroke:var(--alpha-start);stroke-width:1.3;opacity:.65}
+.alpha-controls,.alpha-ink{fill:var(--alpha-start)}
+.alpha-glyph,.alpha-cursor{stroke:var(--alpha-end)}
+.alpha-orbit{opacity:.45}.alpha-orbit path{stroke-dasharray:1;stroke-dashoffset:0}
+.alpha-star-rays{opacity:0}
+.special-motion .alpha-cursor{animation:alpha-cursor 3.2s steps(1) infinite}
+.special-motion .alpha-first-star{animation:alpha-star-idle 6s ease-in-out infinite}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .alpha-back{animation:alpha-back-focus var(--alpha-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .alpha-middle{animation:alpha-middle-focus var(--alpha-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .alpha-front{animation:alpha-front-focus var(--alpha-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .alpha-orbit path{animation:alpha-orbit-trace var(--alpha-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .alpha-first-star{animation:alpha-star-ignite var(--alpha-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .alpha-star-rays{animation:alpha-rays var(--alpha-seq) both}
+.recognition-stage.artwork-alpha-tester{background:radial-gradient(ellipse at 50% 48%,color-mix(in srgb,var(--alpha-start) 11%,transparent),transparent 68%),var(--bg)}
+.recognition-unlock.artwork-alpha-tester .alpha-symbol{--alpha-seq:5000ms}
+.recognition-unlock.artwork-alpha-tester .badge-emblem{animation:alpha-birth 5000ms both}
+.recognition-unlock.artwork-alpha-tester .alpha-back{animation:alpha-back-form var(--alpha-seq) both}
+.recognition-unlock.artwork-alpha-tester .alpha-middle{animation:alpha-middle-form var(--alpha-seq) both}
+.recognition-unlock.artwork-alpha-tester .alpha-front{animation:alpha-front-form var(--alpha-seq) both}
+.recognition-unlock.artwork-alpha-tester .alpha-orbit path{animation:alpha-orbit-trace var(--alpha-seq) both}
+.recognition-unlock.artwork-alpha-tester .alpha-first-star{animation:alpha-star-ignite var(--alpha-seq) both}
+.recognition-unlock.artwork-alpha-tester .alpha-star-rays{animation:alpha-rays var(--alpha-seq) both}
+@keyframes alpha-cursor{0%,72%,100%{opacity:1}73%,86%{opacity:.15}}
+@keyframes alpha-star-idle{0%,65%,100%{filter:brightness(1);transform:none}78%{filter:brightness(1.35);transform:translateY(-1px)}}
+@keyframes alpha-back-focus{0%,100%{transform:none}35%,65%{transform:translate(-4px,-8px) rotate(-3deg)}}
+@keyframes alpha-middle-focus{0%,100%{transform:none}35%,65%{transform:translate(-5px,5px) rotate(3deg)}}
+@keyframes alpha-front-focus{0%,100%{transform:none}40%,65%{transform:translate(4px,-1px) scale(1.02)}}
+@keyframes alpha-orbit-trace{0%{stroke-dashoffset:1;opacity:.3}40%,70%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:.45}}
+@keyframes alpha-star-ignite{0%,30%{opacity:.4;filter:brightness(.8);transform:scale(.8)}65%{opacity:1;filter:drop-shadow(0 0 4px var(--alpha-end)) brightness(1.4);transform:scale(1.08)}100%{opacity:1;filter:none;transform:none}}
+@keyframes alpha-rays{0%,52%{opacity:0}65%,78%{opacity:1}100%{opacity:0}}
+@keyframes alpha-birth{0%{opacity:0;transform:scale(.65) translateY(12px)}12%{opacity:1}65%{transform:scale(1.03)}100%{opacity:1;transform:none}}
+@keyframes alpha-back-form{0%,7%{opacity:0;transform:translate(-14px,-18px)}26%,100%{opacity:1;transform:none}}
+@keyframes alpha-middle-form{0%,23%{opacity:0;transform:translate(-16px,18px)}43%,100%{opacity:1;transform:none}}
+@keyframes alpha-front-form{0%,38%{opacity:0;transform:translate(24px,4px) scale(.85)}63%,100%{opacity:1;transform:none}}
+
+/* Contributor: a working terminal with two branches joining a shared result. */
+.contributor-symbol{--merge-seq:2000ms}
+.code-panel{fill:color-mix(in srgb,var(--alpha-start) 15%,var(--bg));stroke:var(--alpha-start);stroke-width:1.7}
+.code-shadow{fill:var(--bg);opacity:.65}
+.code-divider{stroke:var(--alpha-start);stroke-width:1;opacity:.5}
+.code-dot{fill:var(--alpha-start);opacity:.7}
+.code-brackets,.code-slash,.code-cursor{stroke:var(--alpha-end)}
+.code-lines{stroke:var(--alpha-start)}
+.merge-tracks{stroke:var(--alpha-start)}.merge-source{fill:var(--bg)}
+.merge-track,.merge-check{stroke-dasharray:1;stroke-dashoffset:0}
+.merge-packet{fill:var(--alpha-end);opacity:0}
+.merge-diamond{fill:color-mix(in srgb,var(--alpha-start) 30%,var(--bg));stroke:var(--alpha-start);stroke-width:1.6}
+.merge-check{stroke:var(--alpha-end)}.merge-sparks{opacity:0}
+.contributor-terminal,.merge-result,.merge-sparks{transform-box:view-box;transform-origin:48px 70px}
+.special-motion .code-cursor{animation:code-cursor 3.6s steps(1) infinite}
+.special-motion .packet-left{animation:merge-idle-left 5s ease-in-out infinite}
+.special-motion .packet-right{animation:merge-idle-right 5s ease-in-out infinite}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .merge-track{animation:merge-trace var(--merge-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .packet-left{animation:merge-run-left var(--merge-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .packet-right{animation:merge-run-right var(--merge-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .merge-check{animation:merge-approve var(--merge-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .merge-result{animation:merge-stamp var(--merge-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .merge-sparks{animation:merge-sparks var(--merge-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .code-lines{animation:code-process var(--merge-seq) both}
+.recognition-stage.artwork-contributor{background:radial-gradient(ellipse at 50% 50%,color-mix(in srgb,var(--alpha-start) 10%,transparent),transparent 68%),var(--bg)}
+.recognition-unlock.artwork-contributor .contributor-symbol{--merge-seq:5200ms}
+.recognition-unlock.artwork-contributor .badge-emblem{animation:contributor-build 5200ms both}
+.recognition-unlock.artwork-contributor .contributor-terminal{animation:contributor-terminal-form var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .merge-track{animation:merge-trace var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .packet-left{animation:merge-run-left var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .packet-right{animation:merge-run-right var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .merge-check{animation:merge-approve var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .merge-result{animation:merge-stamp var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .merge-sparks{animation:merge-sparks var(--merge-seq) both}
+.recognition-unlock.artwork-contributor .code-lines{animation:code-process var(--merge-seq) both}
+@keyframes code-cursor{0%,68%,100%{opacity:1}69%,84%{opacity:.15}}
+@keyframes merge-idle-left{0%,60%,100%{opacity:0;translate:0 0}65%{opacity:.8;translate:0 0}80%{opacity:.8;translate:24px 13px}84%{opacity:0;translate:24px 13px}}
+@keyframes merge-idle-right{0%,60%,100%{opacity:0;translate:0 0}65%{opacity:.8;translate:0 0}80%{opacity:.8;translate:-24px 13px}84%{opacity:0;translate:-24px 13px}}
+@keyframes merge-trace{0%,12%{stroke-dashoffset:1;opacity:.3}52%,100%{stroke-dashoffset:0;opacity:1}}
+@keyframes merge-run-left{0%,24%{opacity:0;translate:0 0}28%{opacity:1;translate:0 0}53%{opacity:1;translate:24px 13px}58%,100%{opacity:0;translate:24px 13px}}
+@keyframes merge-run-right{0%,24%{opacity:0;translate:0 0}28%{opacity:1;translate:0 0}53%{opacity:1;translate:-24px 13px}58%,100%{opacity:0;translate:-24px 13px}}
+@keyframes merge-approve{0%,52%{opacity:0;stroke-dashoffset:1}58%{opacity:1;stroke-dashoffset:1}76%,100%{opacity:1;stroke-dashoffset:0}}
+@keyframes merge-stamp{0%,53%{transform:scale(.9)}68%{transform:scale(1.12)}85%,100%{transform:none}}
+@keyframes merge-sparks{0%,63%{opacity:0;transform:scale(.7)}70%{opacity:1}88%,100%{opacity:0;transform:scale(1.2)}}
+@keyframes code-process{0%{opacity:.3;filter:none}40%,55%{opacity:1;filter:brightness(1.5)}100%{opacity:1;filter:none}}
+@keyframes contributor-build{0%{opacity:0;transform:translateY(15px) scale(.8)}15%{opacity:1}65%{transform:scale(1.02)}100%{opacity:1;transform:none}}
+@keyframes contributor-terminal-form{0%{opacity:0;transform:translateY(-12px)}24%,100%{opacity:1;transform:none}}
+
+/* Founder: warm ingredients, a crisp shell, steam and the original crown. */
+.founder-symbol{--recipe-seq:2200ms}
+.founder-taco,.founder-crown,.founder-seasoning,.founder-beans,.founder-lettuce,.founder-tomatoes,.founder-cheese,.founder-shell,.founder-shell-shine,.founder-grain,.tortilla-back{transform-box:view-box;transform-origin:48px 62px}
+.founder-seasoning{opacity:0}.founder-steam{opacity:.45}
+.special-motion .steam-left{animation:founder-steam 5s ease-in-out infinite}
+.special-motion .steam-right{animation:founder-steam 5s 800ms ease-in-out infinite}
+.special-motion .founder-crown{animation:founder-crown-glint 6s ease-in-out infinite}
+.founder-beans{--ingredient-lift:-4px}.founder-lettuce{--ingredient-lift:-7px}.founder-tomatoes{--ingredient-lift:-10px}.founder-cheese{--ingredient-lift:-13px}
+.founder-sauce{stroke-dasharray:1;stroke-dashoffset:0}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .founder-taco{animation:founder-toss var(--recipe-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) :is(.founder-beans,.founder-lettuce,.founder-tomatoes,.founder-cheese){animation:founder-toppings var(--recipe-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .founder-crown{animation:founder-crown-tip var(--recipe-seq) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .founder-seasoning{animation:founder-season var(--recipe-seq) both}
+.recognition-stage.artwork-founder{background:radial-gradient(ellipse at 50% 50%,#d6a54c15,transparent 68%),var(--bg)}
+.recognition-unlock.artwork-founder .founder-symbol{--recipe-seq:5200ms}
+.recognition-unlock.artwork-founder .badge-emblem{animation:founder-recipe 5200ms both}
+.recognition-unlock.artwork-founder :is(.tortilla-back,.founder-shell,.founder-shell-shine,.founder-grain){animation:founder-shell-rise var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-beans{animation:founder-beans-drop var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-lettuce{animation:founder-lettuce-drop var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-tomatoes{animation:founder-tomato-drop var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-cheese{animation:founder-cheese-drop var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-sauce{animation:founder-sauce-drizzle var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-crown{animation:founder-crown-arrive var(--recipe-seq) both}
+.recognition-unlock.artwork-founder .founder-seasoning{animation:founder-season var(--recipe-seq) both}
+@keyframes founder-steam{0%,100%{opacity:0;translate:0 4px}24%{opacity:.6}65%,90%{opacity:0;translate:0 -6px}}
+@keyframes founder-crown-glint{0%,70%,100%{filter:none}82%{filter:brightness(1.4)}}
+@keyframes founder-toss{0%,100%{transform:none}28%{transform:translateY(-4px) rotate(-6deg)}55%{transform:translateY(-2px) rotate(5deg)}78%{transform:rotate(-2deg)}}
+@keyframes founder-toppings{0%,12%,100%{translate:0 0}34%{translate:0 var(--ingredient-lift)}65%{translate:0 2px}80%{translate:0 -1px}}
+@keyframes founder-crown-tip{0%,100%{transform:none}35%{transform:translateY(-5px) rotate(-7deg)}70%{transform:rotate(3deg)}}
+@keyframes founder-season{0%,20%{opacity:0;transform:translateY(-8px)}40%{opacity:1;transform:translateY(-3px) rotate(-6deg)}78%,100%{opacity:0;transform:translateY(12px) rotate(8deg)}}
+@keyframes founder-recipe{0%{opacity:0;transform:scale(.75) rotate(-10deg)}15%{opacity:1}60%,100%{opacity:1;transform:none}}
+@keyframes founder-shell-rise{0%{opacity:0;translate:0 20px}18%,100%{opacity:1;translate:0 0}}
+@keyframes founder-beans-drop{0%,13%{opacity:0;translate:0 -28px}26%,100%{opacity:1;translate:0 0}}
+@keyframes founder-lettuce-drop{0%,23%{opacity:0;translate:0 -25px}38%,100%{opacity:1;translate:0 0}}
+@keyframes founder-tomato-drop{0%,33%{opacity:0;translate:0 -30px}48%,100%{opacity:1;translate:0 0}}
+@keyframes founder-cheese-drop{0%,43%{opacity:0;translate:0 -28px}58%,100%{opacity:1;translate:0 0}}
+@keyframes founder-sauce-drizzle{0%,53%{opacity:0;stroke-dashoffset:1}55%{opacity:1}72%,100%{opacity:1;stroke-dashoffset:0}}
+@keyframes founder-crown-arrive{0%,66%{opacity:0;transform:translateY(-18px) scale(.8)}80%{opacity:1;transform:translateY(2px) scale(1.06)}92%,100%{opacity:1;transform:none}}
+
+/* Each unlock has its own scene and resolves into the same icon used on accounts. */
+.recognition-arrival>.recognition-theatre{position:absolute;z-index:0;inset:0;overflow:hidden;pointer-events:none}
+.recognition-theatre{--scene-time:5200ms}.alpha-theatre{--scene-time:5000ms}
+.recognition-theatre>svg{position:absolute;top:30px;left:50%;width:320px;height:320px;margin-left:-160px}
+.recognition-phases{position:absolute;top:302px;left:0;right:0;text-align:center;font:600 9px/1.4 'Cascadia Code',Consolas,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--alpha-end)}
+.recognition-phases span{position:absolute;left:0;right:0;opacity:0}
+.alpha-phase-one,.contributor-phase-one,.founder-phase-one{animation:recognition-phase-one var(--scene-time) both}
+.alpha-phase-two,.contributor-phase-two,.founder-phase-two{animation:recognition-phase-two var(--scene-time) both}
+.alpha-phase-three,.contributor-phase-three,.founder-phase-three{animation:recognition-phase-three var(--scene-time) both}
+.recognition-unlock.artwork-alpha-tester .recognition-arrival :is(h2,p){animation:recognition-caption 5000ms both}
+.recognition-unlock:is(.artwork-contributor,.artwork-founder) .recognition-arrival :is(h2,p){animation:recognition-caption 5200ms both}
+.alpha-constellation{stroke-dasharray:1;stroke-dashoffset:0;opacity:0;animation:alpha-constellation 5000ms both}
+.alpha-distant-stars{opacity:0;animation:alpha-distant-stars 5000ms both}
+.alpha-comet{stroke-dasharray:34 300;stroke-dashoffset:335;opacity:0;animation:alpha-comet 5000ms both}
+.contributor-streams path{stroke-dasharray:1;stroke-dashoffset:1}.contributor-streams{opacity:0;animation:contributor-streams 5200ms both}.contributor-streams path{animation:contributor-stream-trace 5200ms both}
+.contributor-pieces{opacity:0;animation:contributor-pieces 5200ms both}
+.founder-sunburst{opacity:0;transform-origin:160px 160px;animation:founder-sunburst 5200ms both}
+.founder-confetti{opacity:0;animation:founder-confetti 5200ms both}
+@keyframes recognition-phase-one{0%,5%{opacity:0}12%,24%{opacity:1}30%,100%{opacity:0}}
+@keyframes recognition-phase-two{0%,30%{opacity:0}38%,57%{opacity:1}65%,100%{opacity:0}}
+@keyframes recognition-phase-three{0%,66%{opacity:0}74%,80%{opacity:1}86%,100%{opacity:0}}
+@keyframes recognition-caption{0%,82%{opacity:0;translate:0 7px}95%,100%{opacity:1;translate:0 0}}
+@keyframes alpha-constellation{0%{opacity:0;stroke-dashoffset:1}12%{opacity:.6}48%{opacity:.6;stroke-dashoffset:0}85%,100%{opacity:0;stroke-dashoffset:0}}
+@keyframes alpha-distant-stars{0%{opacity:0}18%,60%{opacity:.8}88%,100%{opacity:0}}
+@keyframes alpha-comet{0%,8%{opacity:0;stroke-dashoffset:335}12%{opacity:1}38%{opacity:0;stroke-dashoffset:0}100%{opacity:0;stroke-dashoffset:0}}
+@keyframes contributor-streams{0%{opacity:0}25%,55%{opacity:.65}80%,100%{opacity:0}}
+@keyframes contributor-stream-trace{0%{stroke-dashoffset:1}55%,100%{stroke-dashoffset:0}}
+@keyframes contributor-pieces{0%{opacity:0;translate:0 -10px}25%,55%{opacity:.6;translate:0 0}80%,100%{opacity:0;translate:0 10px}}
+@keyframes founder-sunburst{0%,65%{opacity:0;transform:scale(.7) rotate(-10deg)}78%{opacity:.65}98%,100%{opacity:0;transform:scale(1.2) rotate(8deg)}}
+@keyframes founder-confetti{0%,50%{opacity:0;translate:0 -20px}65%{opacity:.8}92%,100%{opacity:0;translate:0 20px}}
+.recognition-static .recognition-theatre{display:none}
+@media(prefers-reduced-motion:reduce){.recognition-theatre{display:none}}

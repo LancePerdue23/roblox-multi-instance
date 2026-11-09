@@ -16,7 +16,7 @@ public static class BridgeProtocol
         "layouts.get", "layouts.preview", "layouts.apply", "layouts.savePreset", "layouts.renamePreset", "layouts.deletePreset",
         "activity.list", "activity.clear", "system.health", "system.testWorker", "system.integration", "system.maintenance", "system.openLogs",
         "settings.get", "settings.save", "settings.notifications", "settings.reset", "settings.resetNotifications", "settings.import", "shortcuts.save",
-        "updates.openPage", "updates.check", "updates.download", "updates.install", "updates.cancel", "background.status", "background.set",
+        "updates.access", "updates.connect", "updates.disconnect", "updates.prereleases", "updates.openPage", "updates.check", "updates.download", "updates.install", "updates.cancel", "background.status", "background.set",
         "host.state", "host.tray", "host.shortcuts", "report.export", "previews.configure", "previews.stop",
         "telemetry.get", "telemetry.set", "telemetry.clear", "telemetry.send",
         "support.badges", "support.importBadge", "support.get", "support.checkRoblox", "support.start", "support.roblox", "support.claim", "support.visibility", "support.remove", "support.import", "support.export", "support.forgetPending",

@@ -1,0 +1,53 @@
+/* Standalone recognition: the icon supplies its own silhouette. */
+.design-native .badge-emblem{animation:none}
+.recognition-arrival .design-native::before{display:none}
+.recognition-stage.hunter-stage{background:radial-gradient(ellipse at 50% 48%,#47b96c14,transparent 65%),var(--bg)}
+.kind-bug-hunter .badge-emblem{aspect-ratio:1;height:auto}
+.bug-symbol{--hunt-time:1800ms}
+.beetle-wing{transform-box:view-box;transform-origin:48px 41px}
+.beetle-body,.hunter-reticle,.hunter-impact{transform-box:view-box;transform-origin:48px 52px}
+.hunter-reticle{opacity:0;stroke:var(--alpha-start)}
+.hunter-shot,.hunter-impact{opacity:0;pointer-events:none}
+.special-motion .beetle-wing-left{animation:beetle-flutter-left 5.6s ease-in-out infinite}
+.special-motion .beetle-wing-right{animation:beetle-flutter-right 5.6s ease-in-out infinite}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .hunter-reticle{animation:hunter-target var(--hunt-time) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .hunter-shot{animation:hunter-fire var(--hunt-time) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .hunter-impact{animation:hunter-impact var(--hunt-time) both}
+:is(.badge-collection-choice:is(:hover,:focus-visible) .special-motion,.special-motion:hover,.special-motion:focus-visible,.local-special-button:hover .special-motion,.local-special-button:focus-visible .special-motion) .beetle-body{animation:beetle-hit var(--hunt-time) both}
+.recognition-unlock.kind-bug-hunter{max-width:520px}
+.recognition-unlock.kind-bug-hunter .recognition-arrival{min-height:540px;padding:38px 32px 32px;gap:24px}
+.recognition-unlock.kind-bug-hunter .special-badge{margin:20px 0 8px}
+.recognition-unlock.kind-bug-hunter .badge-emblem{width:184px;height:184px;animation:hunter-enter 4800ms both}
+.recognition-unlock.kind-bug-hunter .bug-symbol{--hunt-time:4800ms}
+.recognition-unlock.kind-bug-hunter .hunter-reticle{animation:hunter-target var(--hunt-time) both}
+.recognition-unlock.kind-bug-hunter .hunter-shot{animation:hunter-fire var(--hunt-time) both}
+.recognition-unlock.kind-bug-hunter .hunter-impact{animation:hunter-impact var(--hunt-time) both}
+.recognition-unlock.kind-bug-hunter .beetle-body{animation:beetle-hit var(--hunt-time) both}
+.recognition-unlock.kind-bug-hunter .recognition-arrival h2,.recognition-unlock.kind-bug-hunter .recognition-arrival p{animation:hunter-copy 4800ms both}
+.recognition-arrival>.hunter-theatre{position:absolute;z-index:0;inset:0;overflow:hidden;pointer-events:none}
+.hunter-grid{position:absolute;inset:0;background-image:linear-gradient(#7ddd9812 1px,transparent 1px),linear-gradient(90deg,#7ddd9812 1px,transparent 1px);background-size:28px 28px;mask-image:radial-gradient(ellipse at 50% 35%,#000,transparent 70%);opacity:0;animation:hunter-grid 4800ms both}
+.hunter-sweep{position:absolute;left:0;right:0;top:0;height:60px;background:linear-gradient(transparent,#83eeac30);border-bottom:1px solid #b5ffca;opacity:0;animation:hunter-sweep 4800ms both}
+.hunter-radar{position:absolute;top:30px;left:50%;width:320px;height:320px;margin-left:-160px;stroke:#77dba3;stroke-width:.7;opacity:0;transform-origin:center;animation:hunter-radar 4800ms both}
+.hunter-radar circle:first-child{stroke-dasharray:12 18}
+.hunter-phases{position:absolute;top:302px;left:0;right:0;text-align:center;font:600 9px/1.4 'Cascadia Code',Consolas,monospace;letter-spacing:.22em;text-transform:uppercase;color:#b4edbd}
+.hunter-phases span{position:absolute;left:0;right:0;opacity:0}
+.hunter-search-label{animation:hunter-search-label 4800ms both}
+.hunter-lock-label{animation:hunter-lock-label 4800ms both;color:#ffb593}
+.hunter-clear-label{animation:hunter-clear-label 4800ms both}
+@keyframes beetle-flutter-left{0%,62%,82%,100%{transform:rotate(0)}66%,74%{transform:rotate(8deg) scaleX(.88)}70%,78%{transform:rotate(2deg)}}
+@keyframes beetle-flutter-right{0%,62%,82%,100%{transform:rotate(0)}66%,74%{transform:rotate(-8deg) scaleX(.88)}70%,78%{transform:rotate(-2deg)}}
+@keyframes hunter-target{0%{opacity:0;transform:translate(-12px,8px) scale(1.25) rotate(-18deg);stroke:var(--alpha-start)}12%{opacity:.9;transform:translate(7px,-5px) scale(1.15) rotate(8deg)}28%{transform:translate(-3px,2px) scale(.95) rotate(-3deg);stroke:var(--alpha-start)}40%,62%{opacity:1;transform:translate(0,0) scale(.72) rotate(0);stroke:#ffa47b}65%,74%{opacity:1;transform:scale(.7);stroke:#ffdfac}90%,100%{opacity:0;transform:scale(.85);stroke:var(--alpha-start)}}
+@keyframes hunter-fire{0%,64%{opacity:0}66%{opacity:1}70%{opacity:.8}73%,100%{opacity:0}}
+@keyframes hunter-impact{0%,65%{opacity:0;transform:scale(.25)}68%{opacity:1;transform:scale(.6)}88%,100%{opacity:0;transform:scale(1.35)}}
+@keyframes beetle-hit{0%,65%{transform:none}69%{transform:translateY(3px) rotate(6deg) scale(.93)}77%{transform:translateY(-1px) rotate(-3deg)}88%,100%{transform:none}}
+@keyframes hunter-enter{0%{opacity:0;transform:translate(-22px,10px) scale(.7)}15%{opacity:1;transform:translate(9px,-5px) scale(.9)}35%,62%{transform:none}69%{transform:scale(.98)}85%,100%{opacity:1;transform:none}}
+@keyframes hunter-grid{0%{opacity:0}12%,65%{opacity:1}90%,100%{opacity:0}}
+@keyframes hunter-sweep{0%{opacity:0;translate:0 35px}10%{opacity:.6}38%{opacity:0;translate:0 300px}100%{opacity:0;translate:0 300px}}
+@keyframes hunter-radar{0%{opacity:0;transform:rotate(-30deg) scale(1.1)}15%,35%{opacity:.6}60%{opacity:.35;transform:rotate(45deg) scale(.85)}76%,100%{opacity:0;transform:rotate(60deg) scale(1.15)}}
+@keyframes hunter-search-label{0%,5%{opacity:0}12%,32%{opacity:1}38%,100%{opacity:0}}
+@keyframes hunter-lock-label{0%,37%{opacity:0}42%,62%{opacity:1}66%,100%{opacity:0}}
+@keyframes hunter-clear-label{0%,74%{opacity:0}82%,94%{opacity:1}100%{opacity:0}}
+@keyframes hunter-copy{0%,76%{opacity:0;translate:0 7px}90%,100%{opacity:1;translate:0 0}}
+/* With animation disabled, show the settled beetle and title without targeting effects. */
+.recognition-static .hunter-theatre{display:none}
+@media(prefers-reduced-motion:reduce){.hunter-theatre{display:none}}
