@@ -305,6 +305,11 @@ internal sealed partial class MainWindow : Window
                 data = new { enabled = shortcuts?.Enabled == true, conflicts };
             }
             else if (request.Command == "host.state") data = new { tray = tray is not null, shortcuts = shortcuts?.Enabled == true };
+            else if(request.Command == "updates.connect")
+            {
+                RobloxLaunchHelper.UpdateAccess.Connect(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+                data=await backend.ExecuteAsync("updates.access",JsonSerializer.SerializeToElement(new {}),cancellation.Token);
+            }
             else if(request.Command == "support.importBadge")
             {
                 var dialog=new Microsoft.Win32.OpenFileDialog {Filter="Account recognition (*.rmibadge)|*.rmibadge",CheckFileExists=true,Multiselect=false};

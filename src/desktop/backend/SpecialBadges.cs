@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 namespace RobloxMultiInstance;
 public sealed record SpecialBadgeDto(string Id,string Title,string RobloxUserId);
-public sealed record SpecialBadgeStateDto(SpecialBadgeDto[] Badges,string Message="");
+public sealed record SpecialBadgeStateDto(SpecialBadgeDto[] Badges,string Message="",string? ClaimedBadgeId=null);
 public sealed record BadgeGrant(int Schema,string Product,string Badge,string Title,string? RobloxUserId=null,string? Salt=null,string[]? EligibleHashes=null);
 public sealed record SavedBadgeGrant(string Receipt,string RobloxUserId);
 public sealed class SpecialBadgeService

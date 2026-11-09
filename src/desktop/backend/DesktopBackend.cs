@@ -216,8 +216,11 @@ public sealed partial class DesktopBackend : IDesktopBackend
                 Confirm(p);if(imported)throw new DesktopOperationException("STATE_CHANGED","Preferences were already imported. Your current preview preferences are kept.");
                 var importedLayouts=new LayoutStore().Load();var importedAppearance=new AppearancePreferences();if(!importedAppearance.Available)throw new InvalidDataException("Original appearance settings are unavailable.");
                 Save(importedLayouts);appearance.Save(importedAppearance.Scheme,true);Directory.CreateDirectory(storageRoot);File.WriteAllText(Path.Combine(storageRoot,"imported"),"1");imported=true;return Settings();
+            case "updates.access": return new {connected=UpdateAccess.Connected,prereleases=UpdateAccess.IncludePrereleases};
+            case "updates.prereleases": UpdateAccess.SetPrereleases(Bool(p,"enabled"));release=null;downloaded?.Dispose();downloaded=null;return new {connected=UpdateAccess.Connected,prereleases=UpdateAccess.IncludePrereleases};
+            case "updates.disconnect": UpdateAccess.Disconnect();release=null;downloaded?.Dispose();downloaded=null;return new {connected=false,prereleases=UpdateAccess.IncludePrereleases};
             case "updates.check":
-                using(var limit=CancellationTokenSource.CreateLinkedTokenSource(token)) { limit.CancelAfter(TimeSpan.FromSeconds(30));release=await new GitHubReleaseSource(http).LatestAsync(limit.Token); }
+                using(var limit=CancellationTokenSource.CreateLinkedTokenSource(token)) { limit.CancelAfter(TimeSpan.FromSeconds(30));try { release=await new GitHubReleaseSource(http).LatestAsync(limit.Token); } catch(UserError error) { release=null;throw new DesktopOperationException("UPDATE_ACCESS",error.Message); } }
                 if(release is not null&&Distribution.Installed() is null)release=release with {Asset=null,DownloadProblem="This legacy installation needs an explicit setup upgrade. Open the release page and choose the desktop or helper edition."};
                 return UpdateState();
             case "updates.openPage":

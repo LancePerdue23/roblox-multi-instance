@@ -14,7 +14,7 @@ if($Initialize){
         [IO.File]::WriteAllBytes($taskKeyPath,[Security.Cryptography.ProtectedData]::Protect($taskPrivate,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser))
         [IO.File]::WriteAllText($taskPublicPath,[Convert]::ToBase64String($taskKey.ExportSubjectPublicKeyInfo()),$taskEncoding)
     } finally {if($taskPrivate){[Array]::Clear($taskPrivate,0,$taskPrivate.Length)};if($taskKey){$taskKey.Dispose()}}
-    [IO.File]::WriteAllText($taskListPath,'{"badges":[{"id":"alpha-tester","title":"Alpha Tester","users":[]}]}',$taskEncoding)
+    [IO.File]::WriteAllText($taskListPath,'{"badges":[{"id":"alpha-tester","title":"Alpha Tester","users":[]},{"id":"bug-hunter","title":"Bug Hunter","users":[]},{"id":"contributor","title":"Contributor","users":[]},{"id":"founder","title":"Founder","users":[]}]}',$taskEncoding)
     Write-Output 'Private issuer and master list created under badge-owner. Back up this folder securely; it is never packaged or committed.'
     return
 }
@@ -28,7 +28,8 @@ try {
     foreach($taskBadge in $taskList.badges){
         if($taskBadge.id -cnotmatch '^[a-z0-9-]{1,48}$' -or !$taskBadge.title -or $taskBadge.title.Length -gt 48 -or $taskBadge.title -match '[\x00-\x1f]'){throw 'Invalid badge definition.'}
         $taskUsers=@($taskBadge.users | Select-Object -Unique)
-        if($taskUsers.Count -lt 1 -or $taskUsers.Count -gt 10000){throw 'Provide between 1 and 10000 tester IDs.'}
+        if($taskUsers.Count -eq 0){Write-Output ('No recipients assigned for '+$taskBadge.id+'; no grant issued.');continue}
+        if($taskUsers.Count -gt 10000){throw 'Provide at most 10000 recipient IDs per badge.'}
         $taskSalt=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
         $taskHashes=@(foreach($taskUser in $taskUsers){
             $taskNumeric=0L

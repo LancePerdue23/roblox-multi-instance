@@ -159,6 +159,7 @@ internal static class Tests
             Check(invalid.IsInvalid);
             Throws<System.ComponentModel.Win32Exception>(() => Native.GetIdentity(int.MaxValue));
         });
+        SetupDiagnosticsTests.Run(Run);
         DiagnosticsTests.Run(Run);
         TelemetryTests.Run(Run);
         LaunchNotificationTests.Run(Run);

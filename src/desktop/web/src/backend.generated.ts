@@ -330,6 +330,7 @@ export interface SpecialBadgeDto {
 export interface SpecialBadgeStateDto {
   badges: SpecialBadgeDto[];
   message: string;
+  claimedBadgeId: string | null;
 }
 export interface SupportDto {
   configured: boolean;

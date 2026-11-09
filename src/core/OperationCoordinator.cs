@@ -10,7 +10,7 @@ public sealed class OperationCoordinator
     public static string Category(string command) => command switch {
         "launch" or "launch.start" or "accounts.launchBatch" => "launch",
         "performance.activate" or "accounts.optimizationBypass" or "performance.saveProfiles" or "performance.import" or "accounts.organize" or "accounts.order" or "games.remove" or "games.clear" => "preferences",
-        "updates.download" => "download",
+        "updates.download" or "updates.connect" or "updates.disconnect" or "updates.prereleases" => "download",
         "system.maintenance" or "maintenance.run" or "system.integration" or "integration.set" or "updates.install" or "updates.setup" => "maintenance",
         "instances.list" or "instances.refresh" or "instances.stopLabels" => "discovery",
         "performance.applyControls" or "performance.resetControls" or "performance.recoverControls" or "instances.focus" or "instances.close" or "instances.stopAll" or "instances.cleanup" or "layouts.apply" or "layouts.preview" or "layouts.savePreset" or "presets.save" => "windows",

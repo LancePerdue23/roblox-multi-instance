@@ -12,7 +12,7 @@ const changed=()=>emit({version:1,event:'operations.changed',data:[...operations
 export const snapshot=()=>[...operations.values()];
 export function category(command:string):Category {
  if(command==='launch'||command==='launch.start'||command==='accounts.launchBatch')return 'launch';
- if(command.startsWith('updates.')&&['updates.download','updates.check'].includes(command))return 'download';
+ if(command.startsWith('updates.')&&['updates.download','updates.check','updates.connect','updates.disconnect','updates.prereleases'].includes(command))return 'download';
  if(['system.maintenance','system.integration','updates.install'].includes(command))return 'maintenance';
  if(command==='system.testWorker')return 'probe';
  if(command==='instances.list'||command==='instances.stopLabels')return 'discovery';

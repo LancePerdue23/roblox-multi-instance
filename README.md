@@ -4,13 +4,13 @@
 
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
-[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.0)
+[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.1)
 [![Downloads](docs/assets/badges/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 ![Windows](docs/assets/badges/windows.svg)
 ![Architecture](docs/assets/badges/architecture.svg)
 ![Status](docs/assets/badges/status.svg)
 
-**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.1.0/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.1.0) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.1.1/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.1.1) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 
 </div>
 
@@ -68,7 +68,7 @@ Release packages include the .NET runtime. Node.js and the .NET SDK are developm
 
 ### 2. Install the recommended edition
 
-1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.0).
+1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.1).
 2. Download and run **`RobloxMultiInstance-Setup.exe`**.
 3. Review the browser Play integration option during setup. It is enabled by default on a fresh installation; upgrades retain your preference.
 4. Open Roblox Multi Instance and check **System → Health** for installation or helper issues.
@@ -125,7 +125,7 @@ No. Same-edition upgrades are designed to preserve settings, launch history, and
 
 ### How should I update right now?
 
-Download the newer installer for your existing edition from Releases and run it. In-app update tooling has verification restrictions, and unauthenticated update checks cannot retrieve this private repository's releases. Use manual downloads for the current builds.
+Download the newer installer for your existing edition from Releases and run it. For private in-app updates, open System → Version & updates, connect GitHub update access using your own personal access token, and enable Include validation prereleases. Browser sign-in alone is not used by the updater. See [private update access](docs/private-updates.md). Older builds need one manual installer download before these controls are available.
 
 ### Can I use the portable app without installing anything?
 
