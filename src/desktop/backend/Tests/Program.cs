@@ -18,6 +18,7 @@ async Task Reject(DesktopBackend backend,string cmd,string payload,string name)
 }
 try
 {
+    ProfileCleanupTests.Run(Path.Combine(root,"profile-cleanup"),Check);
     SpecialBadgeTests.Run(Path.Combine(root,"special-badge-fixtures"),Check);
     string gamesRoot=Path.Combine(root,"recent-games-routing");
     using(var gamesBackend=new DesktopBackend(gamesRoot))

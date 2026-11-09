@@ -68,3 +68,7 @@ Publisher signing remains optional for repository-trusted validation builds. The
 ## November 8 diagnostic and recognition release
 
 v1.1.1 and helper-v1.1.1 remain unsigned private validation prereleases. Setup phase diagnostics and authenticated private-update access are described in [release notes](releases/v1.1.1.md) and [private update setup](private-updates.md). Recognition artwork ships; unfinished supporter artwork and cumulative-payment changes remain excluded. Automated/package checks do not close the outstanding Windows acceptance matrix or establish the original tester failure is fixed.
+
+## November 9 profile-cleanup release
+
+v1.1.2/helper-v1.1.2 fix transient profile cleanup during existing-account badge claims. The tester confirmed the prior installer hotfix works. Badge claim confirmation and broader Windows acceptance remain pending; see [release notes](releases/v1.1.2.md). Unfinished supporter changes remain excluded.
