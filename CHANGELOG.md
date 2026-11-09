@@ -2,6 +2,8 @@
 
 ## 1.1.1 — private validation prereleases
 
+- Rebuild the mutable v1.1.1 assets to fix elevated setup calling a normal-token-only metadata permission check. Keep administrator ownership and strict write-permission validation; preserve the normal-user diagnostic checks. Existing downloads must be replaced manually.
+
 - Record setup attempt/version, phases, fixed failure reasons, code locations and native error codes without private exception text or paths. Name the setup log folder in failure messages.
 - Add native GitHub update credential storage, authenticated private release/asset requests, explicit validation-prerelease selection and access-error guidance. Preserve all package verification and explicit download/install actions.
 - Ship new recognition artwork, animations, badge collections and sidebar controls; retain signed account eligibility. Keep new supporter designs and cumulative contributions unpublished.

@@ -151,6 +151,20 @@ internal static class DiagnosticsTests
             Check(DiagnosticAccess.Protected(safe)); Check(!DiagnosticAccess.Protected(writable));
             Check(!DiagnosticAccess.Protected(new RawSecurityDescriptor("O:BAG:BAD:NO_ACCESS_CONTROL")));
         });
+        run("Elevated setup validates metadata without the normal-token diagnostic guard", () =>
+        {
+            string sid = WindowsIdentity.GetCurrent().User!.Value;
+            string acl = $"(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;{sid})";
+            var safe = new RawSecurityDescriptor("O:BAG:BAD:P" + acl);
+            Check(DiagnosticAccess.ProtectedInstallationMetadata(safe, elevated: true));
+            if (!RobloxLaunchHelper.Program.Elevated)
+                Check(DiagnosticAccess.ProtectedInstallationMetadata(safe, elevated: false));
+            foreach (string rights in new[] { "FA", "GW", "GA", "FW", "WD", "WO", "SD", "0x00000002", "0x00000040" })
+                Check(!DiagnosticAccess.ProtectedInstallationMetadata(new RawSecurityDescriptor($"O:BAG:BAD:P{acl}(A;;{rights};;;{sid})"), elevated: true));
+            Check(!DiagnosticAccess.ProtectedInstallationMetadata(new RawSecurityDescriptor("O:BAG:BAD:" + acl), elevated: true));
+            Check(!DiagnosticAccess.ProtectedInstallationMetadata(new RawSecurityDescriptor($"O:{sid}G:BAD:P{acl}"), elevated: true));
+            Check(!DiagnosticAccess.ProtectedInstallationMetadata(new RawSecurityDescriptor("O:BAG:BAD:NO_ACCESS_CONTROL"), elevated: true));
+        });
         run("Report serialization rejects privacy canaries including unknown fields and log details", () => Store(dir =>
         {
             const string canary = @"C:\Users\PrivateCanary\S-1-5-21-private roblox-player:ticket:secret https://private.invalid cookie=secret --command private-account";
