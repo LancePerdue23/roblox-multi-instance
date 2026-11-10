@@ -7,7 +7,7 @@ test('verified supporter and recognition coexist with independent appearance and
  await expect(page.locator('.sidebar-recognition .special-badge')).toHaveCount(4);await expect(page.locator('.sidebar-bottom>.sidebar-supporter')).toBeVisible();
  await page.getByRole('button',{name:'Support development',exact:true}).click();await expect(page.locator('.sidebar-bottom>.sidebar-supporter .sp-ember')).toBeVisible();await expect(page.locator('.sidebar-recognition .special-badge')).toHaveCount(4);
  const row=await page.locator('.sidebar-recognition').boundingBox(),supporter=await page.locator('.sidebar-bottom>.sidebar-supporter').boundingBox();expect(row!.y+row!.height).toBeLessThanOrEqual(supporter!.y);expect(supporter!.height).toBe(44);const nav=await page.locator('.sidebar nav').boundingBox();expect(supporter!.x).toBeCloseTo(nav!.x,0);expect(supporter!.width).toBeCloseTo(nav!.width,0);
- await page.locator('.sidebar-bottom>.sidebar-supporter').screenshot({path:'../../../.build/supporter-compact-entry.png'});
+ await page.locator('.sidebar-bottom>.sidebar-supporter').screenshot({path:'../../../.build/supporter-compact-entry.png',animations:'disabled'});
  await page.getByRole('button',{name:'Customize Founder badge',exact:true}).click();await expect(page.getByRole('tab',{name:'Badges',exact:true})).toHaveAttribute('aria-selected','true');await page.getByLabel('Show this badge').uncheck();await expect(page.locator('.sidebar-recognition .special-badge')).toHaveCount(3);await expect(page.locator('.sidebar-bottom>.sidebar-supporter .sp-ember')).toBeVisible();
 });
 
