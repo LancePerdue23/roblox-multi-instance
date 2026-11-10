@@ -14,21 +14,21 @@ for(const art of scenes){
   const stage=page.locator('.recognition-stage'),icon=stage.locator('.special-badge');
   await expect(stage.locator('svg')).toHaveAttribute('viewBox','0 0 96 96');await expect(page.locator('.badge-design-gallery,.badge-plate,.badge-ribbon')).toHaveCount(0);
   await page.mouse.move(1300,20);await expect(stage.locator(art.idle)).toHaveCSS('animation-name',art.idleName);
-  await icon.hover();await expect(stage.locator(art.hover)).toHaveCSS('animation-name',art.hoverName);await freeze(icon,900);await stage.screenshot({path:'../../../.build/'+art.id+'-detail-hover.png'});
+  await icon.hover();await expect(stage.locator(art.hover)).toHaveCSS('animation-name',art.hoverName);await freeze(icon,900);if(!process.env.CI)await stage.screenshot({path:'../../../.build/'+art.id+'-detail-hover.png'});
   const button=page.getByRole('button',{name:'Customize '+art.title+' badge',exact:true});await button.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');await expect(page.locator('.sidebar-recognition .kind-'+art.id+' '+art.hover)).toHaveCSS('animation-name',art.hoverName);
   await page.locator('.recognition-replay').click();const scene=page.getByRole('dialog');await expect(scene.locator('.badge-emblem')).toHaveCSS('animation-name',art.unlock);
   await freeze(scene,art.duration*.2);
   if(art.id==='alpha-tester'){expect(await opacity(scene.locator('.alpha-back'))).toBeGreaterThan(0);expect(await opacity(scene.locator('.alpha-front'))).toBe(0);}
   if(art.id==='contributor')expect(await opacity(scene.locator('.merge-check'))).toBe(0);
   if(art.id==='founder'){expect(await opacity(scene.locator('.founder-shell'))).toBe(1);expect(await opacity(scene.locator('.founder-lettuce'))).toBe(0);expect(await opacity(scene.locator('.founder-crown'))).toBe(0);}
-  await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-start.png'});
-  await freeze(scene,art.duration*.5);await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-middle.png'});
+  if(!process.env.CI)await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-start.png'});
+  await freeze(scene,art.duration*.5);if(!process.env.CI)await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-middle.png'});
   await freeze(scene,art.duration*.78);
   if(art.id==='contributor'){await expect(scene.locator('.merge-check')).toHaveCSS('stroke-dashoffset','0px');expect(await opacity(scene.locator('.merge-check'))).toBe(1);}
   if(art.id==='founder')expect(await opacity(scene.locator('.founder-crown'))).toBeGreaterThan(.9);
-  await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-impact.png'});
+  if(!process.env.CI)await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-impact.png'});
   await freeze(scene,art.duration);await expect(scene.getByRole('heading')).toHaveText(art.title);await expect(scene.getByRole('heading')).toHaveCSS('opacity','1');
-  await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-final.png'});await page.getByRole('button',{name:'Continue',exact:true}).click();
+  if(!process.env.CI)await scene.screenshot({path:'../../../.build/'+art.id+'-detail-unlock-final.png'});await page.getByRole('button',{name:'Continue',exact:true}).click();
  });
  test(art.title+' settles with motion disabled and with reduced motion',async({page})=>{
   await installWorkspace(page);await page.evaluate(badges=>(window as any).testEmit({version:1,event:'badges.changed',data:{badges}}),badges);await page.getByRole('button',{name:'Customize '+art.title+' badge',exact:true}).click();

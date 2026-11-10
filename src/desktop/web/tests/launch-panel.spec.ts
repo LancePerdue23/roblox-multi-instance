@@ -11,11 +11,11 @@ async function open(page:Page,query='accounts-demo&launch-testing&games-demo&gri
 
 test('repeat uses persisted account order and Grid, reviews before launch, and reports uncertainty honestly',async({page})=>{
  const panel=await open(page);await expect(panel).toContainText('Fixture Adventure');await expect(panel).toContainText('Second account · First account');
- await panel.screenshot({path:'../../../.build/launch-panel-home.png'});
+ if(!process.env.CI)await panel.screenshot({path:'../../../.build/launch-panel-home.png'});
  await panel.getByRole('button',{name:'↻ Repeat last launch',exact:true}).click();
  await expect(panel.getByRole('heading',{name:'Ready to launch?'})).toBeFocused();
  await expect(panel).toContainText('Grid layout');expect(await launches(page)).toHaveLength(0);
- await panel.screenshot({path:'../../../.build/launch-panel-review.png'});
+ if(!process.env.CI)await panel.screenshot({path:'../../../.build/launch-panel-review.png'});
  await panel.getByRole('button',{name:'Launch 2 accounts',exact:true}).click();
  await expect(panel).toContainText('Batch: Partial');await expect(panel).toContainText('Check Instances and the game before retrying');
  expect((await launches(page))[0].payload).toEqual({ids:['second-local','first-local'],target:'123456',jobId:'',preset:'',arrangement:'Grid'});
@@ -83,7 +83,7 @@ test('target rejection leaves setup editable and starts no games',async({page})=
 
 test('empty library links to Accounts and compact launcher fits without horizontal overflow',async({page})=>{
  const panel=await open(page,'');await expect(panel).toContainText('No recent launches yet');await page.setViewportSize({width:420,height:760});
- await panel.screenshot({path:'../../../.build/launch-panel-narrow.png'});
+ if(!process.env.CI)await panel.screenshot({path:'../../../.build/launch-panel-narrow.png'});
  expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
  await panel.getByRole('button',{name:'Add accounts…'}).click();await expect(page.getByRole('heading',{name:'Accounts',exact:true})).toBeVisible();
 });

@@ -16,7 +16,7 @@ test('new invitation follows badge order and remains after reload',async({page})
  await expect(entry.locator('.sp-invitation')).toBeVisible();await expect(entry.locator('.heart-badge')).toHaveCount(0);
  const icons=await page.locator('.sidebar-recognition').boundingBox(),button=await entry.boundingBox(),nav=await page.locator('.sidebar nav').boundingBox();
  expect(icons!.y+icons!.height).toBeLessThanOrEqual(button!.y);expect(button!.height).toBe(44);expect(button!.x).toBeCloseTo(nav!.x,0);expect(button!.width).toBeCloseTo(nav!.width,0);
- await entry.screenshot({path:'../../../.build/support-development-detailed.png'});
+ if(!process.env.CI)await entry.screenshot({path:'../../../.build/support-development-detailed.png'});
  await page.emulateMedia({reducedMotion:'reduce'});await expect(entry.locator('.sp-invitation-spark')).toHaveCSS('animation-name','none');
  await page.reload();await expect(entry.locator('.sp-invitation')).toBeVisible();await entry.click();await expect(page.getByRole('button',{name:'Classic hearts',exact:true})).toHaveCount(0);
  await expect(entry.locator('.sp-invitation')).toBeVisible();await expect(entry.locator('.sp-invitation')).toBeVisible();await expect(page.getByRole('dialog')).not.toBeVisible();

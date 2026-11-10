@@ -32,7 +32,7 @@ test('renders all pages and keeps layout apply behind confirmation',async({page}
  await page.getByRole('button',{name:'System',exact:true}).click();await page.getByRole('tab',{name:'Version & updates',exact:true}).click();await expect(page.getByRole('tab').first()).toHaveText('Version & updates');await expect(page.getByRole('tab',{name:'Version & updates',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByText('Installed helper',{exact:true})).toBeVisible();await page.getByRole('tab',{name:'Health',exact:true}).click();await expect(page.getByText('Helper is installed.')).toBeVisible();
  await page.getByRole('tab',{name:'Version & updates',exact:true}).click();await page.getByRole('button',{name:'Check for updates'}).click();await expect(page.getByText('1.2.0',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Settings',exact:true}).click();await expect(page.getByRole('heading',{name:'Color scheme'})).toBeVisible();
- await page.screenshot({path:'../../.build/preview-ui-results/settings-dark.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../.build/preview-ui-results/settings-dark.png',fullPage:true});
 });
 test('saves isolated themes and requires confirmation for shared notification changes',async({page})=>{
  await page.getByRole('button',{name:'Settings',exact:true}).click();
@@ -42,7 +42,7 @@ test('saves isolated themes and requires confirmation for shared notification ch
  await expect.poll(()=>page.evaluate(()=>(window as unknown as {testCalls:{command:string;payload:{confirmed?:boolean}}[]}).testCalls.find(call=>call.command==='settings.notifications')?.payload.confirmed)).toBe(true);
 });
 test('stays usable at narrow width and does not overflow the desktop',async({page})=>{
- await page.setViewportSize({width:850,height:700});await page.screenshot({path:'../../.build/preview-ui-results/instances-narrow.png',fullPage:true});
+ await page.setViewportSize({width:850,height:700});if(!process.env.CI)await page.screenshot({path:'../../.build/preview-ui-results/instances-narrow.png',fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  await page.getByRole('button',{name:'Clean up background clients…'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();
 });
@@ -61,7 +61,7 @@ test('dropdown popups follow every theme and support keyboard selection',async({
   await expect(combo).toBeEnabled();await combo.click();
   const popup=page.getByRole('listbox',{name:'Arrangement',exact:true});await expect(popup).toBeVisible();
   expect(await popup.evaluate(element=>{const reference=document.createElement('div');reference.style.background='var(--surface)';document.body.append(reference);const expected=getComputedStyle(reference).backgroundColor;reference.remove();return getComputedStyle(element).backgroundColor===expected;})).toBe(true);
-  await page.screenshot({path:`../../.build/preview-ui-results/dropdown-${scheme}.png`,fullPage:true});
+  if(!process.env.CI)await page.screenshot({path:`../../.build/preview-ui-results/dropdown-${scheme}.png`,fullPage:true});
   await combo.press('End');await combo.press('Enter');await expect(combo).toHaveText('Recover off-screen⌄');await expect(popup).not.toBeVisible();
   await combo.press('ArrowDown');await combo.press('Home');await combo.press('Enter');await expect(combo).toHaveText('Grid⌄');
   await combo.click();await combo.press('Escape');await expect(combo).toBeFocused();
@@ -77,14 +77,14 @@ test('audits all page surfaces, light system mode, forced colors and dialog cont
  for(const section of ['Instances','Layouts','System','Settings']){
   await page.getByRole('button',{name:section,exact:true}).click();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:`../../.build/preview-ui-results/audit-${section}.png`,fullPage:true});
+  if(!process.env.CI)await page.screenshot({path:`../../.build/preview-ui-results/audit-${section}.png`,fullPage:true});
  }
  const tab=page.getByRole('tab',{name:'Appearance'});await tab.focus();await tab.press('ArrowRight');await expect(page.getByRole('tab',{name:'Notifications'})).toHaveAttribute('aria-selected','true');
  await page.emulateMedia({forcedColors:'active'});
  await page.getByRole('button',{name:'Layouts',exact:true}).click();await page.getByRole('combobox',{name:'Arrangement',exact:true}).click();await expect(page.getByRole('listbox')).toBeVisible();
- await page.screenshot({path:'../../.build/preview-ui-results/dropdown-high-contrast.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../.build/preview-ui-results/dropdown-high-contrast.png',fullPage:true});
  await page.keyboard.press('Escape');
- await page.getByRole('button',{name:'Instances',exact:true}).click();await page.getByRole('button',{name:'Clean up background clients…'}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.screenshot({path:'../../.build/preview-ui-results/dialog-high-contrast.png',fullPage:true});await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Instances',exact:true}).click();await page.getByRole('button',{name:'Clean up background clients…'}).click();await expect(page.getByRole('dialog')).toBeVisible();if(!process.env.CI)await page.screenshot({path:'../../.build/preview-ui-results/dialog-high-contrast.png',fullPage:true});await page.keyboard.press('Escape');
 });
 
  test('layouts select all and preview automatically after changes',async({page})=>{

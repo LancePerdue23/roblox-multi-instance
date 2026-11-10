@@ -21,7 +21,7 @@ test('standalone green beetle flutters its wings, focuses, locks on and fires on
  await freeze(icon,250);expect(await opacity(stage.locator('.hunter-reticle'))).toBeGreaterThan(.8);expect(await opacity(stage.locator('.hunter-shot'))).toBe(0);
  const search=await stage.locator('.hunter-reticle').evaluate(el=>getComputedStyle(el).transform);
  await freeze(icon,900);await expect(stage.locator('.hunter-reticle')).toHaveCSS('stroke','rgb(255, 164, 123)');expect(await stage.locator('.hunter-reticle').evaluate(el=>getComputedStyle(el).transform)).not.toBe(search);
- await page.screenshot({path:'../../../.build/bug-hunter-lock.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/bug-hunter-lock.png',fullPage:true});
  await freeze(icon,1206);expect(await opacity(stage.locator('.hunter-shot'))).toBeGreaterThan(.8);expect(await opacity(stage.locator('.hunter-impact'))).toBeGreaterThan(0);
  await freeze(icon,1800);expect(await opacity(stage.locator('.hunter-shot'))).toBe(0);expect(await opacity(stage.locator('.hunter-reticle'))).toBe(0);
  await page.mouse.move(1300,20);await icon.hover();await expect(stage.locator('.hunter-reticle')).toHaveCSS('animation-name','hunter-target');
@@ -32,12 +32,12 @@ test('unlock stages a larger search, target lock, shot and final beetle reveal',
  await openHunter(page);await page.locator('.recognition-replay').click();const scene=page.getByRole('dialog');
  await expect(scene).toBeVisible();await expect(scene.locator('.badge-emblem')).toHaveCSS('animation-name','hunter-enter');await expect(scene.locator('.badge-emblem')).toHaveCSS('width','184px');
  await freeze(scene,900);expect(await opacity(scene.locator('.hunter-search-label'))).toBeGreaterThan(.9);expect(await opacity(scene.locator('.hunter-shot'))).toBe(0);
- await scene.screenshot({path:'../../../.build/bug-hunter-unlock-search.png'});
+ if(!process.env.CI)await scene.screenshot({path:'../../../.build/bug-hunter-unlock-search.png'});
  await freeze(scene,2400);expect(await opacity(scene.locator('.hunter-lock-label'))).toBe(1);await expect(scene.locator('.hunter-reticle')).toHaveCSS('stroke','rgb(255, 164, 123)');
- await scene.screenshot({path:'../../../.build/bug-hunter-unlock-lock.png'});
- await freeze(scene,3216);expect(await opacity(scene.locator('.hunter-shot'))).toBeGreaterThan(.8);await scene.screenshot({path:'../../../.build/bug-hunter-unlock-shot.png'});
+ if(!process.env.CI)await scene.screenshot({path:'../../../.build/bug-hunter-unlock-lock.png'});
+ await freeze(scene,3216);expect(await opacity(scene.locator('.hunter-shot'))).toBeGreaterThan(.8);if(!process.env.CI)await scene.screenshot({path:'../../../.build/bug-hunter-unlock-shot.png'});
  await freeze(scene,4800);await expect(scene.getByRole('heading')).toHaveText('Bug Hunter');await expect(scene.getByRole('heading')).toHaveCSS('opacity','1');expect(await opacity(scene.locator('.hunter-shot'))).toBe(0);
- await scene.screenshot({path:'../../../.build/bug-hunter-unlock-reveal.png'});await page.getByRole('button',{name:'Continue',exact:true}).click();
+ if(!process.env.CI)await scene.screenshot({path:'../../../.build/bug-hunter-unlock-reveal.png'});await page.getByRole('button',{name:'Continue',exact:true}).click();
 });
 
 test('motion toggle and reduced motion show a settled beetle without targeting or theatre',async({page})=>{

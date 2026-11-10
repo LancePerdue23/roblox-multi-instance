@@ -36,7 +36,7 @@ test('account rows highlight fully and keep status and group columns aligned',as
  await expect(rows.first().locator('.account-status')).toBeEmpty();
  await rows.first().locator('.account-group-cell').hover();
  expect(await rows.first().evaluate(row=>getComputedStyle(row).backgroundColor)).toBe(highlighted);
- await page.screenshot({path:'../../../.build/accounts-row-alignment.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/accounts-row-alignment.png',fullPage:true});
  await page.setViewportSize({width:900,height:960});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -88,11 +88,11 @@ test('Accounts separates profile management from Play and preserves both selecti
  await page.getByRole('group',{name:'Account groups',exact:true}).getByRole('button',{name:'All 2',exact:true}).click();
  await expect(page.getByLabel('Select account Second account')).toBeChecked();
  await expect(profile.getByText('Updated account notes',{exact:true})).toBeVisible();
- await page.screenshot({path:'../../../.build/accounts-management.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/accounts-management.png',fullPage:true});
  await page.getByRole('button',{name:'Play',exact:true}).click();
  await expect(page.getByLabel('Select account First account')).toBeChecked();
  await expect(page.getByLabel('Game URL or Place ID',{exact:true})).toHaveValue('123456');
- await page.screenshot({path:'../../../.build/play-workspace.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/play-workspace.png',fullPage:true});
 });
 
 test('account batch survives navigation and retains its result',async({page})=>{
@@ -182,7 +182,7 @@ test('reporting is visibly optional and changing it never sends a report',async(
  expect(calls.filter(c=>c.command==='telemetry.set').map(c=>c.payload)).toEqual([{enabled:true},{enabled:false}]);
  expect(calls.filter(c=>c.command==='telemetry.send')).toHaveLength(0);
  await expect(page.getByRole('button',{name:'Send queued reports'})).toBeDisabled();
- await page.screenshot({path:'../../../.build/desktop-ui-results/privacy.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/desktop-ui-results/privacy.png',fullPage:true});
 });
 
 test('support stays optional and disabled until configured without starting checkout',async({page})=>{
@@ -192,7 +192,7 @@ test('support stays optional and disabled until configured without starting chec
  await expect(page.getByText('Robux support is unavailable in this build.')).toBeVisible();
  await expect(page.getByText('Optional support. Every feature stays free.',{exact:false})).toBeVisible();
  expect(await page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(c=>['support.start','support.claim','support.roblox'].includes(c.command)))).toHaveLength(0);
- await page.screenshot({path:'../../../.build/desktop-ui-results/support.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/desktop-ui-results/support.png',fullPage:true});
 });
 
 test('Robux donation is independent of Stripe and never claims a supporter badge',async({page})=>{
@@ -218,7 +218,7 @@ test('configured Stripe starts only after an explicit click while Robux remains 
 
 test('verified cosmetic badge can be hidden and removed without changing launch access',async({page})=>{
  await page.goto('/?supporter-verified');await expect(page.locator('.sidebar-supporter')).toBeVisible();
- await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});
+ if(!process.env.CI)await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});
  await expect(page.getByRole('button',{name:'Launch games',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Support development',exact:true}).click();
  await page.getByText('Support settings and details',{exact:true}).click();
@@ -232,7 +232,7 @@ test('verified cosmetic badge can be hidden and removed without changing launch 
 test('account groundwork preserves selection order and clearly gates automatic launch',async({page})=>{
  await page.goto('/?accounts-demo');await page.getByRole('button',{name:'Accounts',exact:true}).click();
  await expect(page.getByRole('button',{name:'Add Roblox account…'})).toBeEnabled();
- await page.screenshot({path:'../../../.build/desktop-ui-results/accounts.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/desktop-ui-results/accounts.png',fullPage:true});
  await page.getByRole('button',{name:'Play',exact:true}).click();await page.getByLabel('Select account Second account').check();await page.getByLabel('Select account First account').check();
  await expect(page.getByText('Slot 1: Second account',{exact:true})).toBeVisible();await expect(page.getByText('Slot 2: First account',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Move account 2 up',exact:true}).click();await expect(page.getByText('Slot 1: First account',{exact:true})).toBeVisible();
@@ -240,7 +240,7 @@ test('account groundwork preserves selection order and clearly gates automatic l
  await expect(page.getByRole('button',{name:'Launch selected',exact:true})).toBeDisabled();await expect(page.getByText('Launch selected is disabled in this build, even after successful sign-in and game-target validation.',{exact:false})).toBeVisible();
  await expect(page.getByText('Saved accounts are not used for browser launches.',{exact:false})).toBeVisible();
  expect(await page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(c=>c.command==='accounts.launchBatch'))).toHaveLength(0);
- await page.screenshot({path:'../../../.build/desktop-ui-results/accounts-groundwork.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/desktop-ui-results/accounts-groundwork.png',fullPage:true});
 });
 
 test('removing a saved account requires confirmation before any session deletion',async({page})=>{
@@ -291,7 +291,7 @@ test('a verified gamepass updates the whole app supporter badge without enabling
  await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByText('Support settings and details',{exact:true}).click();await page.getByText('Stripe receipt backups',{exact:true}).click();
  await expect(page.getByRole('button',{name:'Export receipt…',exact:true})).toBeDisabled();
  await expect(page.getByRole('button',{name:'Remove receipt…',exact:true})).toBeDisabled();
- await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});
+ if(!process.env.CI)await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});
  await page.getByLabel('Show my supporter badge').uncheck();
  await expect(page.locator('.sidebar-supporter')).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Support development',exact:true})).toBeVisible();
@@ -313,5 +313,5 @@ test('profile name edits a local nickname and account creation sits in the heade
  await expect(page.getByRole('button',{name:'View My main account',exact:true})).toBeVisible();
  await expect(profile.getByText('@FixtureOne',{exact:true})).toBeVisible();
  await profile.getByRole('button',{name:'Organize',exact:true}).click();await expect(profile.getByLabel('Local nickname',{exact:true})).toHaveCount(0);
- await page.screenshot({path:'../../../.build/accounts-inline-nickname.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/accounts-inline-nickname.png',fullPage:true});
 });

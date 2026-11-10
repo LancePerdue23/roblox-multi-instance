@@ -68,7 +68,7 @@ test('large lists form one responsive grid and preserve selections',async({page}
  await expect(page.locator('.preview-card')).toHaveCount(30);
  await expect(page.getByLabel('Select Fixture client 1',{exact:true})).toBeChecked();
  await expect(page.getByRole('group',{name:'Preview rate',exact:true})).toBeInViewport();
- await page.screenshot({path:'../../../.build/preview-grid.png'});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/preview-grid.png'});
 });
 
 test('preview fit fills landscape cards or preserves the complete source without resizing clients',async({page})=>{

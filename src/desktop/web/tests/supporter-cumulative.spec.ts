@@ -29,5 +29,5 @@ for(const viewport of [{width:1440,height:960},{width:1000,height:700},{width:80
  const row=await page.locator('.sidebar-bottom>.sidebar-supporter').boundingBox();const nav=await page.locator('.sidebar nav').boundingBox();
  expect(row).toBeTruthy();expect(nav).toBeTruthy();expect(Math.abs(row!.x-nav!.x)).toBeLessThanOrEqual(1);expect(Math.abs(row!.width-nav!.width)).toBeLessThanOrEqual(1);expect(row!.height).toBe(44);
  if(await page.locator('.sidebar-regular').count())expect(await page.locator('.sidebar').evaluate(el=>el.scrollHeight<=el.clientHeight+1)).toBe(true);
- await page.screenshot({path:`../../../.build/supporter-column-${viewport.width}.png`});
+ if(!process.env.CI)await page.screenshot({path:`../../../.build/supporter-column-${viewport.width}.png`});
 });

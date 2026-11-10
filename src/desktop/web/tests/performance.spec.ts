@@ -17,7 +17,7 @@ test('presets are first, selection is a draft, and Apply activates live policy w
  expect(maximum).toMatchObject({fpsCap:10,ecoQos:'on',windowBehavior:'smallMinimized',disableGrass:true,graySky:true,textureQuality:'lowest'});
  await expect(page.getByRole('group',{name:'Optimization presets'})).toContainText('FPS');
  await expect(page.getByText(/FPS and graphics apply to the next account launch/)).toBeVisible();
- await page.screenshot({path:testInfo.outputPath('performance-presets.png'),fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:testInfo.outputPath('performance-presets.png'),fullPage:true});
 });
 
 test('fine tuning marks a preset Custom and preserves its draft after a stale Apply',async({page})=>{
@@ -67,14 +67,14 @@ test('performance shows first samples honestly and saves preferences without app
  await installPerformance(page);
  await expect(page.getByRole('button',{name:'PID 123'})).toBeVisible();
  await expect(page.getByText('Waiting for sample').first()).toBeVisible();
- await page.screenshot({path:testInfo.outputPath('performance-overview.png'),fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:testInfo.outputPath('performance-overview.png'),fullPage:true});
  await page.getByRole('button',{name:'Pause monitoring'}).click();
  await page.getByRole('combobox',{name:'Performance profile',exact:true}).focus();await page.keyboard.press('ArrowDown');await page.keyboard.press('End');await page.keyboard.press('Enter');
  await page.getByLabel('Requested FPS cap (blank = unchanged)').fill('30');
  await page.getByRole('button',{name:'Save profile preferences'}).click();
  await expect(page.getByText('Preferences saved inactive. Automatic tuning stopped and app-owned live settings were restored where possible.')).toBeVisible();
  await page.getByText('Profile capabilities and limitations',{exact:true}).click();await expect(page.getByRole('cell',{name:'No',exact:true}).first()).toBeVisible();
- await page.screenshot({path:testInfo.outputPath('performance.png'),fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:testInfo.outputPath('performance.png'),fullPage:true});
  const writes=await page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='performance.saveProfiles'));
  expect(writes).toHaveLength(1);expect(writes[0].payload.expectedRevision).toBe('fixture-1');expect(writes[0].payload.selectedProfileId).toBe('many-accounts');expect(writes[0].payload.profiles[2].fpsCap).toBe(30);
  await page.emulateMedia({forcedColors:'active'});await expect(page.getByRole('heading',{name:'Per-process measurements'})).toBeVisible();
@@ -120,7 +120,7 @@ test('manual controls require confirmation and report real observed ownership se
  expect(await page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='performance.saveProfiles'))).toHaveLength(0);
  await page.getByRole('button',{name:'Reset owned settings…'}).click();await page.getByRole('button',{name:'Reset owned settings',exact:true}).click();await expect(page.getByText('Owned settings restored; external changes preserved.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Reset owned settings…'})).toBeDisabled();await expect(page.getByRole('combobox',{name:'Manual CPU priority',exact:true})).toBeEnabled();await expect(page.getByRole('combobox',{name:'Manual EcoQoS',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Recover interrupted settings…'}).click();await page.getByRole('button',{name:'Recover settings',exact:true}).click();await expect(page.getByText('Recovery checked. Pending changes: 0.',{exact:true})).toBeVisible();
- await page.screenshot({path:testInfo.outputPath('performance-manual-controls.png'),fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:testInfo.outputPath('performance-manual-controls.png'),fullPage:true});
 });
 test('denied native changes remain visibly failed and never become owned',async({page})=>{
  await installPerformance(page);await page.getByRole('button',{name:'Pause monitoring'}).click();await page.evaluate(()=>(window as any).performanceFailure=true);
@@ -168,7 +168,7 @@ test('charts share a timeline and label their measurement scales',async({page},t
  const series=page.locator('.performance-chart .chart-series');await expect(series).toHaveCount(2);
  expect(await series.evaluateAll(nodes=>nodes.map(node=>node.getAttribute('x1')))).toEqual(['0','0']);
  await expect(page.locator('.performance-axis').first()).toContainText('0.0%');await expect(page.locator('.performance-axis').nth(1)).toContainText('0.0 MB');
- await expect(page.locator('.chart-gridline')).toHaveCount(6);await page.locator('.performance-charts').screenshot({path:testInfo.outputPath('charts.png')});
+ await expect(page.locator('.chart-gridline')).toHaveCount(6);if(!process.env.CI)await page.locator('.performance-charts').screenshot({path:testInfo.outputPath('charts.png')});
 });
 
 test('saved profile priority uses explicit confirmation and preserves reset behavior',async({page})=>{
@@ -204,5 +204,5 @@ test('saved EcoQoS applies through confirmation and restores owned settings',asy
  await page.getByLabel('Exact FPS cap',{exact:true}).fill('37');await expect(slider).toHaveAttribute('aria-valuetext','37 FPS');
  const gray=page.getByRole('switch',{name:'Gray sky request',exact:true});await gray.click();await expect(gray).toHaveAttribute('aria-checked','false');
  await expect(page.getByText('Next launch',{exact:true})).toBeVisible();
- await page.locator('.performance-tuning').screenshot({path:testInfo.outputPath('fine-tune.png')});
+ if(!process.env.CI)await page.locator('.performance-tuning').screenshot({path:testInfo.outputPath('fine-tune.png')});
  });

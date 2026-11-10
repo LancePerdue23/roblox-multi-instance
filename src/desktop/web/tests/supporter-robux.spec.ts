@@ -13,7 +13,7 @@ test('Robux slider shifts milestones and verifies all purchases without enabling
  await expect(plusProgress).toHaveAttribute('aria-valuemin','300');await expect(plusProgress).toHaveAttribute('aria-valuemax','700');await expect(plusProgress).toHaveAttribute('aria-valuenow','500');
  const fills=()=>page.locator('.robux-tier-track').evaluateAll(tracks=>tracks.map(track=>Math.round(track.firstElementChild!.getBoundingClientRect().width/track.getBoundingClientRect().width*1000)/1000));
  await expect.poll(fills).toEqual([1,.5,0]);
- await page.screenshot({path:'../../../.build/support-robux-progress.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/support-robux-progress.png',fullPage:true});
  await expect(page.getByRole('button',{name:'Support with USD…',exact:true})).toBeDisabled();
  expect(await page.locator('#robux-heading').evaluate(el=>el.getBoundingClientRect().top)).toBeLessThan(await page.getByRole('heading',{name:'Support with USD',exact:true}).evaluate(el=>el.getBoundingClientRect().top));
  await slider.focus();await page.keyboard.press('ArrowRight');await expect(slider).toHaveAttribute('aria-valuetext','300 Robux');
@@ -40,7 +40,7 @@ test('Robux controls fit compact viewports and all pass amounts are selectable',
  await page.getByRole('option',{name:'100,000 Robux',exact:true}).click();await expect(page.getByRole('slider')).toHaveAttribute('aria-valuetext','100,000 Robux');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('.robux-selected-amount')).toHaveCSS('animation-name','none');await expect(page.locator('.robux-tier-track i').first()).toHaveCSS('transition-duration','0s');
- await page.screenshot({path:'../../../.build/support-robux-compact.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/support-robux-compact.png',fullPage:true});
 });
 
 test('purchase checks show pending feedback and respect reduced motion',async({page})=>{

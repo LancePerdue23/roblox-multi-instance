@@ -11,7 +11,7 @@ test('collection cards show all earned kinds including hidden badges and select 
  await expect(collection.getByRole('button',{name:'Select Founder badge',exact:true})).toContainText('Hidden');
  for(const badge of badges){const choice=collection.getByRole('button',{name:'Select '+badge.title+' badge',exact:true});await choice.focus();await page.keyboard.press('Enter');await expect(choice).toHaveAttribute('aria-pressed','true');await expect(collection.locator('[aria-pressed=true]')).toHaveCount(1);await expect(page.locator('.recognition-workbench')).toHaveCount(1);await expect(page.getByRole('region',{name:'Customize '+badge.title,exact:true})).toBeVisible();await expect(page.getByRole('dialog')).not.toBeVisible();}
  await expect(page.getByLabel('Show this badge')).not.toBeChecked();await page.getByLabel('Show this badge').check();await expect(collection.getByRole('button',{name:'Select Founder badge',exact:true})).toContainText('Shown');
- await page.screenshot({path:'../../../.build/badge-collection-grid.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/badge-collection-grid.png',fullPage:true});
 });
 
 test('sidebar icons name badges on hover and focus, and overflow leads to the full collection',async({page})=>{
@@ -38,7 +38,7 @@ for(const size of [{width:1440,height:960,scale:1},{width:900,height:600,scale:1
    const row=page.locator('.sidebar-recognition');expect(await row.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
    await page.locator('.sidebar').hover();await page.mouse.wheel(0,800);expect(await page.locator('.sidebar').evaluate(el=>el.scrollTop)).toBe(0);
    await page.locator('main').evaluate(el=>{el.scrollTop=500;});expect(await page.locator('main').evaluate(el=>el.scrollTop)).toBeGreaterThan(0);expect(await page.locator('.sidebar').evaluate(el=>el.scrollTop)).toBe(0);
-   if(size.width===900&&size.height===600)await page.screenshot({path:'../../../.build/badge-sidebar-minimum.png'});
+   if(size.width===900&&size.height===600)if(!process.env.CI)await page.screenshot({path:'../../../.build/badge-sidebar-minimum.png'});
   }finally{await context.close();}
  });
 }

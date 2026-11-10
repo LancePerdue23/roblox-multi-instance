@@ -104,6 +104,8 @@ checks distribution contents without installation. It has contents-read
 permission and no publishing/deployment credentials. Local workflow files take
 effect only after the maintainer commits and pushes them.
 
+Browser fixtures generate diagnostic design screenshots only during local runs. CI still executes the same artwork, animation, layout, entitlement and interaction assertions; local image capture is omitted because waiting for animated elements to stabilize can time out on hosted Windows. Failure traces remain enabled.
+
 ## Remaining publication steps
 
 Local validation passed: three badge regression tests, the existing package-count

@@ -14,9 +14,9 @@ test('recent Play repeats saved accounts despite current selection and artwork r
  await page.getByLabel('Game URL or Place ID',{exact:true}).fill('123456');
  await page.getByRole('button',{name:'Check game target',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Fixture Adventure',exact:true})).toHaveCount(2);
- await recent.screenshot({path:'../../../.build/recent-games.png'});
+ if(!process.env.CI)await recent.screenshot({path:'../../../.build/recent-games.png'});
  await page.setViewportSize({width:900,height:960});
- await recent.screenshot({path:'../../../.build/recent-games-narrow.png'});
+ if(!process.env.CI)await recent.screenshot({path:'../../../.build/recent-games-narrow.png'});
  await page.setViewportSize({width:1440,height:960});
  await page.getByLabel('Public server Job ID (optional)').fill('aa112233-4455-6677-8899-aabbccddeeff');
  await play.click();
@@ -94,5 +94,5 @@ test('cancel changing recent accounts restores the draft and returns without lau
  await expect(page.getByLabel('Select account Second account')).toBeChecked();
  await expect(page.getByLabel('Select account First account')).toBeChecked();
  await expect(page.getByRole('heading',{name:'Choose accounts',exact:true})).toBeInViewport();
- await page.screenshot({path:'../../../.build/change-accounts.png',fullPage:true});
+ if(!process.env.CI)await page.screenshot({path:'../../../.build/change-accounts.png',fullPage:true});
 });
