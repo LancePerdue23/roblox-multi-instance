@@ -1,4 +1,5 @@
-param([string]$Archive = (Join-Path $PSScriptRoot 'archive/legacy-winforms'))
+param([string]$Archive = (Join-Path (Join-Path $PSScriptRoot '../..') 'archive/legacy-winforms'))
+$taskRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $ErrorActionPreference = 'Stop'
 foreach ($taskEntry in (Get-Content -LiteralPath (Join-Path $Archive 'sha256.json') -Raw | ConvertFrom-Json)) {
     if ([IO.Path]::GetFileName($taskEntry.Name) -ne $taskEntry.Name) { throw 'Invalid archive manifest path.' }

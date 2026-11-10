@@ -12,7 +12,7 @@ Unsigned local development and private validation packages still build. Without 
 2. Make that identity available in the current user's My certificate store for SignTool. The implemented packaging adapter uses that store; a hosted service requiring its own signing adapter needs a separate integration.
 3. Obtain the certificate's 40-character store thumbprint and 64-character SHA-256 certificate fingerprint. Use the latter for trust pinning; the former only selects the signing certificate. Provide an HTTPS RFC 3161 timestamp endpoint supported by the provider.
 4. Run `Package.ps1 -Release -SigningCertificateThumbprint <store-thumbprint> -PublisherCertificateSha256 <certificate-sha256> -SignTool <signtool-path> -TimestampServer <https-endpoint>`.
-5. Run `Test-Distribution.ps1 -RequireSigned`, then the isolated Windows acceptance checklist. Package creation is not publication or production acceptance.
+5. Run `scripts/testing/Test-Distribution.ps1 -RequireSigned`, then the isolated Windows acceptance checklist. Package creation is not publication or production acceptance.
 
 Release packaging refuses missing or inconsistent identity before creating output. It compiles the pin into all core copies, signs first-party payload binaries before hashing/embedding them, and signs both completed installers before computing release checksums. Identical payload binaries reuse identical signed bytes across editions. It verifies Windows trust, exact publisher and signing timestamp. The graphical build timestamp and supporter-testing assets remain excluded from public frontend builds. A cryptographic signing timestamp is separate: it belongs to the signature, not the app interface.
 

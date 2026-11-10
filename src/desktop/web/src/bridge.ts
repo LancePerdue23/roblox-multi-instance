@@ -12,13 +12,13 @@ const changed=()=>emit({version:1,event:'operations.changed',data:[...operations
 export const snapshot=()=>[...operations.values()];
 export function category(command:string):Category {
  if(command==='launch'||command==='launch.start'||command==='accounts.launchBatch')return 'launch';
- if(command.startsWith('updates.')&&['updates.download','updates.check','updates.connect','updates.disconnect','updates.prereleases'].includes(command))return 'download';
+ if(command.startsWith('updates.')&&['updates.download','updates.check'].includes(command))return 'download';
  if(['system.maintenance','system.integration','updates.install'].includes(command))return 'maintenance';
  if(command==='system.testWorker')return 'probe';
  if(command==='instances.list'||command==='instances.stopLabels')return 'discovery';
  if(['performance.applyControls','performance.resetControls','performance.recoverControls','instances.focus','instances.close','instances.stopAll','instances.cleanup','layouts.preview','layouts.apply','layouts.savePreset'].includes(command))return 'windows';
  if(['performance.activate','accounts.optimizationBypass','performance.saveProfiles','performance.import','games.remove','games.clear'].includes(command))return 'preferences';
- if(command.startsWith('settings.')&&!['settings.get','settings.read'].includes(command)||['host.tray','host.shortcuts','shortcuts.save','layouts.renamePreset','layouts.deletePreset','background.set','activity.clear','telemetry.set','telemetry.clear','support.start','support.claim','support.visibility','support.remove','support.forgetPending','support.import','support.importBadge','support.export','accounts.create','accounts.credentials.open','accounts.connect','accounts.remove','accounts.rename','accounts.organize','accounts.order'].includes(command))return 'preferences';
+ if(command.startsWith('settings.')&&!['settings.get','settings.read'].includes(command)||['host.tray','host.shortcuts','shortcuts.save','layouts.renamePreset','layouts.deletePreset','background.set','activity.clear','telemetry.set','telemetry.clear','support.recovery','support.refresh','support.restore','support.start','support.claim','support.visibility','support.remove','support.forgetPending','support.import','support.importBadge','support.export','accounts.create','accounts.credentials.open','accounts.connect','accounts.remove','accounts.rename','accounts.organize','accounts.order'].includes(command))return 'preferences';
  return 'read';
 }
 export function conflicts(command:string,active:Operation[]=snapshot()) {

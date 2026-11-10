@@ -204,6 +204,23 @@ public static class LaunchTargetResolver
 
 public sealed class LaunchBatchCoordinator(IAccountSessionProvider provider)
 {
+    static readonly HashSet<string> Codes = new(StringComparer.Ordinal)
+    {
+        "ACCOUNT_ASSERTION_FAILED", "ACCOUNT_AUTH_TIMEOUT", "ACCOUNT_AUTH_UNAVAILABLE", "ACCOUNT_CHALLENGE_REQUIRED",
+        "ACCOUNT_IDENTITY_MISMATCH", "ACCOUNT_RATE_LIMITED", "ACCOUNT_REDIRECT_REFUSED", "ACCOUNT_SESSION_EXPIRED",
+        "ACCOUNT_TICKET_FAILED", "ACCOUNT_TICKET_MISSING", "ACCOUNT_VALIDATION_FAILED", "ACCOUNT_LAUNCH_FAILED",
+        "ACCOUNT_LAUNCH_UNVERIFIED", "ACCOUNT_PROCESS_UNCONFIRMED", "ACCOUNT_PROVIDER_RESULT_INVALID", "BATCH_CANCELED",
+        "HELPER_READINESS_UNCONFIRMED", "LAUNCH_OBSERVATION_CANCELED", "ACCOUNT_HOST_UNAVAILABLE", "ACCOUNT_IDENTITY_CONFIRMED",
+        "ACCOUNT_JOIN_UNCONFIRMED", "ACCOUNT_PROCESS_AMBIGUOUS", "ACCOUNT_PROFILE_UNAVAILABLE", "ACCOUNT_START_FAILED", "ACCOUNT_START_UNCONFIRMED"
+    };
+    static AccountLaunchOutcome Sanitize(AccountLaunchOutcome value)
+    {
+        if(value.Status is not ("Started" or "Failed" or "NeedsSignIn" or "Unavailable" or "Unknown" or "Canceled") || !Codes.Contains(value.Code))
+            return new("Unknown","ACCOUNT_PROVIDER_RESULT_INVALID");
+        if(value.Status=="Started"&&!value.Verified)return new("Unknown","ACCOUNT_PROCESS_UNCONFIRMED");
+        string? server=Guid.TryParseExact(value.ObservedServer,"D",out var parsed)&&parsed!=Guid.Empty?parsed.ToString("D"):null;
+        return value with {ObservedServer=server};
+    }
     public Func<int,CancellationToken,Task<LaunchTargetDto>>? TargetForSlot {get;set;}
     readonly SemaphoreSlim gate=new(1,1);
     public async Task<LaunchBatchResultDto> RunAsync(AccountLaunchContext[] accounts,LaunchTargetDto target,string? presetName,Action<LaunchBatchProgressDto>? progress,CancellationToken token)
@@ -227,12 +244,19 @@ public sealed class LaunchBatchCoordinator(IAccountSessionProvider provider)
                 if(provider is IPipelinedAccountSessionProvider pipeline)
                 {
                     var timer=System.Diagnostics.Stopwatch.StartNew();
-                    var pending=pipeline.Start(account,slotTarget,(stage,ms)=>progress?.Invoke(new(id,account.Id,slot,stage,"",ms,slotTarget.JobId)),token);
+                    var pending=pipeline.Start(account,slotTarget,(stage,ms)=>
+                    {
+                        if(stage is "Preparing" or "Starting" or "Joining" or "Waiting for helper")
+                            progress?.Invoke(new(id,account.Id,slot,stage,"",ms,slotTarget.JobId));
+                    },token);
                     Task prepare=index+1<accounts.Length?pipeline.Prepare(accounts[index+1],token):Task.CompletedTask;
                     async Task<LaunchBatchItemDto> Observe()
                     {
-                        var value=await pending.Completion;
-                        string status=value.Status=="Started"&&!value.Verified?"Unknown":value.Status;
+                        AccountLaunchOutcome value;
+                        try { value=Sanitize(await pending.Completion); }
+                        catch(OperationCanceledException) when(token.IsCancellationRequested) { value=new("Unknown","LAUNCH_OBSERVATION_CANCELED"); }
+                        catch { value=new("Unknown","ACCOUNT_LAUNCH_FAILED"); }
+                        string status=value.Status;
                         progress?.Invoke(new(id,account.Id,slot,status=="Started"?"Joined":status=="Unknown"?"Unconfirmed":status,value.Code,timer.ElapsedMilliseconds,slotTarget.JobId));
                         return new(account.Id,slot,status,value.Code,value.Verified?value.Pid:null,value.Verified?value.Created:null,slotTarget.JobId,value.ObservedServer,timer.ElapsedMilliseconds);
                     }
@@ -245,9 +269,7 @@ public sealed class LaunchBatchCoordinator(IAccountSessionProvider provider)
                 try { outcome=await provider.LaunchAsync(account,slotTarget,token); }
                 catch(OperationCanceledException) when(token.IsCancellationRequested) { outcome=new("Unknown","LAUNCH_OBSERVATION_CANCELED"); }
                 catch { outcome=new("Failed","ACCOUNT_LAUNCH_FAILED"); }
-                if(outcome.Status is not ("Started" or "Failed" or "NeedsSignIn" or "Unavailable" or "Unknown" or "Canceled") ||
-                    outcome.Code is null || !Regex.IsMatch(outcome.Code,@"\A[A-Z][A-Z0-9_]{0,63}\z",RegexOptions.CultureInvariant))
-                    outcome=new("Unknown","ACCOUNT_PROVIDER_RESULT_INVALID");
+                outcome=Sanitize(outcome);
                 // No automatic retry: an exception/cancellation might follow player start.
                 // A provider cannot turn an uncorrelated process into layout permission.
                 if(outcome.Status=="Started"&&!outcome.Verified)outcome=new("Unknown","ACCOUNT_PROCESS_UNCONFIRMED");
@@ -258,7 +280,7 @@ public sealed class LaunchBatchCoordinator(IAccountSessionProvider provider)
             bool complete=!token.IsCancellationRequested && results.All(r=>r.Status=="Started") && results.Select(r=>(r.Pid,r.Created)).Distinct().Count()==results.Count;
             return new(id,token.IsCancellationRequested?"Canceled":complete?"Completed":"Partial",complete,presetName,results.ToArray());
         }
-        finally { if(provider is IPipelinedAccountSessionProvider pipeline)await pipeline.Finish();gate.Release(); }
+        finally { try { if(provider is IPipelinedAccountSessionProvider pipeline)await pipeline.Finish(); } finally { gate.Release(); } }
     }
 }
 

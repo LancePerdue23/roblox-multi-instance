@@ -16,7 +16,11 @@ string MakeReceipt(string product="roblox-multi-instance",string keyId="test"){
     return Encode(payload)+"."+Encode(key.SignData(payload,HashAlgorithmName.SHA256,DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
 }
 var config=new SupportConfiguration("https://support.invalid/",new(){{"test",Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())}});
-var fake=new FakeHandler{Receipt=MakeReceipt()};using var http=new HttpClient(fake);
+string MakeWallet(string id,int tier,long total,long revision=1,string currency="usd"){
+ byte[] payload=JsonSerializer.SerializeToUtf8Bytes(new{product="roblox-multi-instance",badge="supporter",receiptId=id,version=2,keyId="test",supporterId=id,tier,totalCents=total,revision,currency});
+ return Encode(payload)+"."+Encode(key.SignData(payload,HashAlgorithmName.SHA256,DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+}
+var fake=new FakeHandler{Receipt=MakeReceipt(),SignWallet=id=>{byte[] payload=JsonSerializer.SerializeToUtf8Bytes(new{product="roblox-multi-instance",badge="supporter",receiptId=id,version=2,keyId="test",supporterId=id,tier=0,totalCents=500,revision=1,currency="usd"});return Encode(payload)+"."+Encode(key.SignData(payload,HashAlgorithmName.SHA256,DSASignatureFormat.IeeeP1363FixedFieldConcatenation));}};using var http=new HttpClient(fake);
 try {
     int beforeRoblox=fake.Calls;
     using(var roblox=new SupportService(Path.Combine(root,"roblox"),http,new("",new(),"123456789"))){
@@ -82,16 +86,35 @@ try {
     int passCalls=passHandler.Calls;
     using(var service=new SupportService(root,passHttp,new("",new())))await service.CheckRobloxAsync(["22"],true);
     Check(passHandler.Calls==passCalls,"Blank pass configuration makes no ownership requests");
+    using(var cumulative=new SupportService(Path.Combine(root,"cumulative"),http,config)){
+        fake.BadUrl=false;fake.Oversized=false;fake.Paid=true;
+        string code=cumulative.RecoveryCode();string id=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code))).ToLowerInvariant();
+        Check(code.Length==43&&cumulative.RecoveryCode()==code,"Recovery credential is stable and generated once");
+        Check(!Encoding.UTF8.GetString(File.ReadAllBytes(Path.Combine(root,"cumulative","support-wallet.bin"))).Contains(code),"Recovery credential is protected at rest");
+        fake.Receipt=MakeWallet(id,1,700,2);var state=await cumulative.RefreshAsync();Check(state.VerifiedTier==1&&state.TotalCents==700,"Signed cumulative total and tier drive native state");
+        fake.Receipt=MakeWallet(id,1,200,3);state=await cumulative.RefreshAsync();Check(state.VerifiedTier==1&&state.TotalCents==200,"Refund total keeps earned cosmetics");
+        fake.Receipt=MakeWallet(id,0,500,1);try{await cumulative.RefreshAsync();throw new Exception("Accepted stale receipt");}catch(InvalidDataException){Check(cumulative.State().TotalCents==200,"Stale receipt cannot roll back the verified wallet");}
+        fake.Receipt=MakeWallet(new string('b',64),2,1500,4);try{await cumulative.RefreshAsync();throw new Exception("Accepted foreign wallet");}catch(InvalidDataException){Check(cumulative.State().VerifiedTier==1,"Valid signature alone cannot replace claim ownership");}
+        Reject(()=>cumulative.VerifyReceipt(MakeWallet(id,0,700)),"Signed inconsistent cumulative tier rejected");
+        Reject(()=>cumulative.VerifyReceipt(MakeWallet(id,2,-1)),"Signed negative cumulative total rejected");
+        Reject(()=>cumulative.VerifyReceipt(MakeWallet(id,1,700,currency:"eur")),"Signed foreign currency rejected");
+        fake.Receipt=MakeWallet(id,1,200,3);
+        using var otherDevice=new SupportService(Path.Combine(root,"recovered"),http,config);state=await otherDevice.RefreshAsync(code);Check(state.VerifiedTier==1&&otherDevice.RecoveryCode()==code,"Private code recovers verified tier and future payment identity on another device");
+        fake.SignWallet=wallet=>MakeWallet(new string('b',64),2,1500);await otherDevice.StartAsync(500);try{await otherDevice.ClaimAsync();throw new Exception("Foreign claim accepted");}catch(InvalidDataException){Check(otherDevice.State().Pending&&otherDevice.State().VerifiedTier==1,"Wrong-wallet payment receipt preserves pending credentials and prior entitlement");}
+        string legacy=Path.Combine(root,"legacy.rmisupport");File.WriteAllText(legacy,MakeReceipt());cumulative.ImportReceipt(legacy);fake.Receipt=MakeWallet(id,-1,100,4);state=await cumulative.RefreshAsync();Check(state.Supported&&state.VerifiedTier==0&&state.TotalCents==100,"Starting cumulative credit cannot erase legacy base cosmetics");
+        cumulative.VerifyReceipt(MakeReceipt());Check(true,"Version-one receipts remain valid base recognition without invented amounts");
+    }
+    await RobuxChecks.Run(root,Check,config,MakeWallet(new string('c',64),2,1500));
     Console.WriteLine($"{passed} support checks passed.");
 } finally {Directory.Delete(root,true);}
 
 sealed class FakeHandler:HttpMessageHandler {
-    public string Receipt="";public string? Secret,LastClaimHash;public bool Paid,BadUrl,Oversized,DropStartOnce;public int Calls;
+    public Func<string,string>? SignWallet;public string Receipt="";public string? Secret,LastClaimHash,WalletSecret;public bool Paid,BadUrl,Oversized,DropStartOnce;public int Calls;
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token){
         Calls++;using var body=JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
-        if(request.RequestUri!.AbsolutePath=="/support/start"){LastClaimHash=body.RootElement.GetProperty("claimHash").GetString();if(DropStartOnce){DropStartOnce=false;throw new HttpRequestException("Fixture dropped response");}}
-        if(request.RequestUri!.AbsolutePath=="/support/claim")Secret=body.RootElement.GetProperty("secret").GetString();
-        string response=Oversized?new string('x',16385):request.RequestUri.AbsolutePath=="/support/start"?JsonSerializer.Serialize(new{attemptId=new string('A',32),checkoutUrl=BadUrl?"https://attacker.invalid/":"https://checkout.stripe.com/c/pay/example"}):Paid?JsonSerializer.Serialize(new{status="paid",receipt=Receipt}):"{\"status\":\"pending\"}";
+        if(request.RequestUri!.AbsolutePath=="/support/start-v2"){WalletSecret=body.RootElement.GetProperty("walletSecret").GetString();LastClaimHash=body.RootElement.GetProperty("claimHash").GetString();if(DropStartOnce){DropStartOnce=false;throw new HttpRequestException("Fixture dropped response");}}
+        if(request.RequestUri!.AbsolutePath=="/support/claim"){Secret=body.RootElement.GetProperty("secret").GetString();if(Paid&&WalletSecret is not null){var walletId=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(WalletSecret))).ToLowerInvariant();Receipt=SignWallet!(walletId);}}
+        string response=Oversized?new string('x',16385):request.RequestUri.AbsolutePath=="/support/start-v2"?JsonSerializer.Serialize(new{attemptId=new string('A',32),checkoutUrl=BadUrl?"https://attacker.invalid/":"https://checkout.stripe.com/c/pay/example"}):Paid?JsonSerializer.Serialize(new{status="paid",receipt=Receipt}):"{\"status\":\"pending\"}";
         return new(HttpStatusCode.OK){Content=new StringContent(response,Encoding.UTF8,"application/json")};
     }
 }

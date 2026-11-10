@@ -95,6 +95,17 @@ try
         await backend.ExecuteAsync("accounts.connect",Payload(),default);backend.AccountSignIn=null;
         Check(true,"Canceled sign-in permits another sign-in operation");
         await Reject(backend,"support.setRole","{\"role\":\"Super Supporter\"}","Supporter role cannot be set by a bridge command");
+        await Reject(backend,"support.roblox","{\"passId\":\"999999999\"}","Browser cannot choose an unconfigured donation pass");
+        await Reject(backend,"support.roblox","{\"passId\":\"https://attacker.invalid/\"}","Donation bridge rejects arbitrary destinations");
+        Check(await backend.ExecuteAsync("support.checkRoblox",Payload(),default) is SupportDto,"Purchase verification defaults to automatic discovery without choosing a pass");
+        await Reject(backend,"support.checkRoblox","{\"passId\":\"999999999\"}","Verification bridge rejects unconfigured passes");
+        await Reject(backend,"support.checkRoblox","{\"scanAll\":\"true\"}","Full discovery requires a boolean choice");
+        await Reject(backend,"support.checkRoblox","{\"scanAll\":true,\"passId\":\"2076244661\"}","Verification refuses ambiguous selected and full-scan scopes");
+        if(SupportService.DeveloperToolsEnabled){
+            await Reject(backend,"support.devResetRoblox","{}","Dev reset requires an explicit reset action");
+            var reset=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("support.devResetRoblox",Payload("{\"confirmed\":true}"),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Check(reset.GetProperty("totalRobux").GetInt64()==0,"Development bridge resets Robux checking to zero");
+        }else await Reject(backend,"support.devResetRoblox","{\"confirmed\":true}","Normal backend refuses development credit reset");
         await Reject(backend,"unknown.command","{}","Unknown commands rejected");
         var quickAccounts=JsonSerializer.SerializeToElement(await backend.ExecuteAsync("accounts.state",Payload("{\"includeAvatars\":false}"),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Check(quickAccounts.TryGetProperty("accounts",out _),"Quick launcher can read local accounts without avatar requests");
@@ -122,6 +133,23 @@ try
         Check(new LayoutStore(Path.Combine(root,"window-layouts.json")).Load().Presets.Length==0,"Explicit reset restores defaults");
         using var canceled=new CancellationTokenSource();canceled.Cancel();
         try { await backend.ExecuteAsync("app.state",Payload(),canceled.Token);throw new Exception("Cancellation ignored"); } catch(OperationCanceledException) {Check(true,"Canceled requests rejected before execution");}
+    }
+    // Exercise the real save DTO, on-disk validation and a fresh backend reload.
+    var shortcutBindings = new Dictionary<string,int>(LayoutSettings.Default.Shortcuts);
+    shortcutBindings["Manager"] = 0x7004d;
+    using(var shortcutBackend = new DesktopBackend(root))
+    {
+        await shortcutBackend.ExecuteAsync("settings.save",JsonSerializer.SerializeToElement(new { shortcuts=shortcutBindings }),default);
+        shortcutBindings["Manager"] = 393293;
+        await shortcutBackend.ExecuteAsync("settings.save",JsonSerializer.SerializeToElement(new { shortcuts=shortcutBindings }),default);
+        var duplicate = new Dictionary<string,int>(shortcutBindings) { ["Saved"] = 393293 };
+        await Reject(shortcutBackend,"shortcuts.save",JsonSerializer.Serialize(new { bindings=duplicate }),"Duplicate shortcuts rejected");
+    }
+    using(var shortcutBackend = new DesktopBackend(root))
+    {
+        var loaded=JsonSerializer.SerializeToElement(await shortcutBackend.ExecuteAsync("settings.get",Payload(),default),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Check(loaded.GetProperty("shortcuts").GetProperty("Manager").GetInt32()==393293,"Ctrl Alt M survives save and fresh backend reload");
+        Check(loaded.GetProperty("shortcuts").GetProperty("Saved").GetInt32()==393298,"Rejected duplicate preserves Saved Ctrl Alt R");
     }
     File.WriteAllText(Path.Combine(root,"window-layouts.json"),"corrupt");
     using(var backend=new DesktopBackend(root))

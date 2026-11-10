@@ -5,10 +5,10 @@ Run commands from the active GitHub checkout with Windows x64, the local .NET 10
 ```powershell
 ./Test.ps1                     # Current desktop checks only
 ./Test-Shared.ps1              # Shared services and installed-helper regressions
-./Audit.ps1                    # Build + regressions + personas + 15-minute synthetic soak
-./Audit.ps1 -SoakSeconds 20     # Harness development only; does not replace the full soak
-./Audit.ps1 -Mode Live -RunDirectory .build/audits/<run>
-./Test-ArchivedUI.ps1          # Explicit historical WinForms checks only
+./scripts/testing/Audit.ps1                    # Build + regressions + personas + 15-minute synthetic soak
+./scripts/testing/Audit.ps1 -SoakSeconds 20     # Harness development only; does not replace the full soak
+./scripts/testing/Audit.ps1 -Mode Live -RunDirectory .build/audits/<run>
+./scripts/legacy/Test-ArchivedUI.ps1          # Explicit historical WinForms checks only
 ```
 
 Audits are occasional milestone runs. They are not added to the routine command or scheduled automatically. The default audit uses seed 3102026; pass `-Seed` to reproduce another sequence. Use a new output directory for each synthetic run. Fixture tests never launch Roblox, install software, change browser protocols, or operate on existing game windows. Registry and ACL regressions use temporary fixtures and may require execution outside a restricted sandbox.
@@ -35,4 +35,4 @@ Setup, repair, uninstall, protocol changes, real update installation and automat
 
 ## Historical UI tests
 
-`tests/retired-ui` preserves the original combined runner and simulation sources. Its project is excluded from active test discovery. `Test-Legacy.ps1` is a compatibility alias for `Test-Shared.ps1`; it no longer runs retired workspace tests. Shared regressions still use controlled native fixture windows where needed to validate current Windows services, and retain installed-helper notification behavior.
+`tests/retired-ui` preserves the original combined runner and simulation sources. Its project is excluded from active test discovery. `scripts/legacy/Test-Legacy.ps1` is a compatibility alias for `Test-Shared.ps1`; it no longer runs retired workspace tests. Shared regressions still use controlled native fixture windows where needed to validate current Windows services, and retain installed-helper notification behavior.

@@ -308,6 +308,10 @@ export interface RectDto {
   width: number;
   height: number;
 }
+export interface RobloxSupportPass {
+  id: string;
+  credit: number;
+}
 export interface SettingsDto {
   scheme: string;
   available: boolean;
@@ -340,6 +344,13 @@ export interface SupportDto {
   message: string;
   robloxConfigured: boolean;
   receiptAvailable: boolean;
+  verifiedTier: number;
+  totalCents: number;
+  recoveryAvailable: boolean;
+  totalRobux: number;
+  robloxTier: number;
+  usdTier: number;
+  robloxPasses: RobloxSupportPass[] | null;
 }
 export interface TelemetryDto {
   enabled: boolean;

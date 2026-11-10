@@ -17,7 +17,7 @@ internal static class Program
     internal static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
 
-    internal static int Main(string[] args)=>HelperEntry.Run(args);
+    internal static int Main(string[] args) { UpdateCredentialMigration.RemoveOwnedCredential(); return HelperEntry.Run(args); }
     internal enum StartupMode { Setup, Dashboard, Roblox }
 
     // Administrative and internal modes are handled before this user-facing routing.

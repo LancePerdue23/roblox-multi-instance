@@ -113,7 +113,7 @@ internal sealed partial class MainWindow : Window
         Content = body;
         Loaded += async (_, _) => await InitializeAsync();
         Closing += OnClosing;
-        Closed += (_, _) => { Microsoft.Win32.SystemEvents.SessionSwitch-=OnSessionSwitch;previews.Dispose();startup.Close();closed.Cancel(); windowTheme.Dispose(); updateShutdown?.Dispose(); shortcuts?.Dispose(); tray?.Dispose(); trayIcon.Dispose(); view.Dispose(); backend.Dispose(); };
+        Closed += (_, _) => { Microsoft.Win32.SystemEvents.SessionSwitch-=OnSessionSwitch;previews.Dispose();startup.Close();closed.Cancel(); windowTheme.Dispose(); updateShutdown?.Dispose(); shortcuts?.Dispose(); DisposeTray(); trayIcon.Dispose(); view.Dispose(); backend.Dispose(); };
         backend.Event += (operationId, name, data) =>
         {
             if (!Dispatcher.HasShutdownStarted)
@@ -291,6 +291,12 @@ internal sealed partial class MainWindow : Window
                 bool enabled = request.Payload.GetProperty("enabled").GetBoolean();
                 SetTray(enabled); data = new { enabled };
             }
+            else if (request.Command == "host.shortcutCapture")
+            {
+                shortcuts!.Capture(request.Payload.GetProperty("enabled").GetBoolean());
+                if (shortcuts.Enabled) SetTray(true);
+                PublishShortcutState(); data = new { captured = true };
+            }
             else if (request.Command == "host.shortcuts")
             {
                 bool enabled = request.Payload.GetProperty("enabled").GetBoolean();
@@ -302,14 +308,9 @@ internal sealed partial class MainWindow : Window
                     if (shortcuts.Enabled) SetTray(true);
                 }
                 else shortcuts?.Disable();
-                data = new { enabled = shortcuts?.Enabled == true, conflicts };
+                PublishShortcutState(); data = new { enabled = shortcuts?.Enabled == true, conflicts, outcome = conflicts.Length == 0 ? "Succeeded" : shortcuts?.Enabled == true ? "PartiallySucceeded" : "Failed", message = conflicts.Length > 0 ? string.Join(" ", conflicts) : enabled ? "Global shortcuts enabled." : "Global shortcuts disabled." };
             }
-            else if (request.Command == "host.state") data = new { tray = tray is not null, shortcuts = shortcuts?.Enabled == true };
-            else if(request.Command == "updates.connect")
-            {
-                RobloxLaunchHelper.UpdateAccess.Connect(new System.Windows.Interop.WindowInteropHelper(this).Handle);
-                data=await backend.ExecuteAsync("updates.access",JsonSerializer.SerializeToElement(new {}),cancellation.Token);
-            }
+            else if (request.Command == "host.state") data = new { tray = tray is not null, shortcuts = shortcuts?.Enabled == true, status = shortcuts?.Status ?? "disabled", registered = shortcuts?.Registered ?? 0, total = shortcuts?.Total ?? 0 };
             else if(request.Command == "support.importBadge")
             {
                 var dialog=new Microsoft.Win32.OpenFileDialog {Filter="Account recognition (*.rmibadge)|*.rmibadge",CheckFileExists=true,Multiselect=false};
@@ -346,17 +347,20 @@ internal sealed partial class MainWindow : Window
             {
                 data = await backend.ExecuteOperationAsync(request.Id, request.Command, request.Payload, cancellation.Token);
                 if (request.Command is "settings.save" or "settings.reset" or "settings.import") await RefreshWindowThemeAsync();
-                if (shortcuts?.Enabled == true && request.Command is "settings.save" or "shortcuts.save" or "settings.reset")
+                if (shortcuts?.Requested == true && request.Command is "settings.save" or "shortcuts.save" or "settings.reset" or "settings.import")
                 {
                     var state = JsonSerializer.SerializeToElement(await backend.ExecuteAsync("settings.get", JsonSerializer.SerializeToElement(new { }), cancellation.Token), json);
-                    string[] conflicts = shortcuts.Enable(state.GetProperty("shortcuts"));
-                    Send(new { version = 1, operationId = request.Id, @event = "host.shortcutConflicts", data = new { conflicts } });
+                    shortcuts.Enable(state.GetProperty("shortcuts"));
+                    if (shortcuts.Enabled) SetTray(true);
+                    PublishShortcutState();
                 }
             }
             Send(new { version = 1, id = request.Id, data });
             if(data is RobloxMultiInstance.OperationResultDto result && result.Code is "SETUP_HANDOFF" or "UNINSTALL_REQUESTED")_ = Dispatcher.BeginInvoke(()=>{exiting=true;Close();});
         }
         catch (OperationCanceledException) { SendError(request.Id, "canceled", "Operation canceled."); }
+        catch (System.IO.InvalidDataException) when(request.Command.StartsWith("updates.",StringComparison.Ordinal)) { SendError(request.Id,"update_verification_failed","Update metadata or payload verification failed. Check again and download a fresh copy; setup was not started."); }
+        catch (RobloxLaunchHelper.UserError ex) { SendError(request.Id,"update_unavailable",ex.Message); }
         catch (DesktopOperationException ex) { SendError(request.Id, ex.Code, ex.Message); }
         catch (Exception ex)
         {
@@ -389,9 +393,19 @@ internal sealed partial class MainWindow : Window
         windowTheme.SetScheme(state.GetProperty("scheme").GetString() ?? "Dark");
     }
 
+    private void PublishShortcutState() => Send(new { version = 1, operationId = "shortcuts", @event = "host.shortcutState", data = new { enabled = shortcuts?.Enabled == true, status = shortcuts?.Status ?? "disabled", registered = shortcuts?.Registered ?? 0, total = shortcuts?.Total ?? 0, conflicts = shortcuts?.Conflicts ?? [], tray = tray is not null } });
+
+    private void DisposeTray()
+    {
+        if (tray is null) return;
+        var menu = tray.ContextMenuStrip;
+        tray.Dispose(); tray = null;
+        menu?.Dispose();
+    }
+
     private void SetTray(bool enabled)
     {
-        if (!enabled) { shortcuts?.Disable(); tray?.Dispose(); tray = null; return; }
+        if (!enabled) { if (!IsVisible) Reopen(); shortcuts?.Disable(); DisposeTray(); PublishShortcutState(); return; }
         if (tray is not null) return;
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open Roblox Multi Instance", null, (_, _) => Dispatcher.Invoke(Reopen));
@@ -414,6 +428,7 @@ internal sealed partial class MainWindow : Window
         e.Cancel = true;
         if (draining) return;
         draining = true;
+        shortcuts?.Disable();
         // Always unwind the first Closing event before attempting the final Close.
         await Task.Yield();
         await previews.StopAsync();

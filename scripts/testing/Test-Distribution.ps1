@@ -1,15 +1,16 @@
-param([string]$Artifacts=(Join-Path $PSScriptRoot 'artifacts'),[version]$ExpectedVersion,[switch]$RequireSigned)
+param([string]$Artifacts=(Join-Path (Join-Path $PSScriptRoot '../..') 'artifacts'),[version]$ExpectedVersion,[switch]$RequireSigned,[switch]$AppOnly)
+$taskRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $ErrorActionPreference='Stop'
 if($null -eq $ExpectedVersion){
-    [xml]$taskVersionProps=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Directory.Build.props') -Raw
+    [xml]$taskVersionProps=Get-Content -LiteralPath (Join-Path $taskRepositoryRoot 'Directory.Build.props') -Raw
     $taskProductVersion=[version]$taskVersionProps.Project.PropertyGroup.Version
     $ExpectedVersion=[version]::new($taskProductVersion.Major,$taskProductVersion.Minor,[Math]::Max(0,$taskProductVersion.Build),[Math]::Max(0,$taskProductVersion.Revision))
 }
 $taskManifest=Get-Content -LiteralPath (Join-Path $Artifacts 'assets.json') -Raw | ConvertFrom-Json
 if($RequireSigned -and !$taskManifest.Release){throw 'Signed release artifacts required; these are unsigned validation artifacts.'}
 if($taskManifest.Release -and $taskManifest.PublisherCertificateSha256 -notmatch '\A[a-fA-F0-9]{64}\z'){throw 'Signed release publisher fingerprint is missing or malformed.'}
-if($taskManifest.Schema -ne 1 -or @($taskManifest.Assets).Count -ne 2){throw 'Expected exactly two installer editions.'}
-if(@($taskManifest.Assets.Edition | Sort-Object -Unique).Count -ne 2 -or 'Desktop' -notin $taskManifest.Assets.Edition -or 'Helper' -notin $taskManifest.Assets.Edition){throw 'Missing installer edition.'}
+$taskEditions=if($AppOnly){@('Desktop')}else{@('Desktop','Helper')}
+if($taskManifest.Schema -ne 1 -or @($taskManifest.Assets).Count -ne $taskEditions.Count -or @(Compare-Object $taskEditions @($taskManifest.Assets.Edition)).Count){throw 'Unexpected installer editions.'}
 foreach($taskAsset in $taskManifest.Assets) {
     $taskFile=Join-Path $Artifacts $taskAsset.Name
     $taskExpectedName=if($taskAsset.Edition -eq 'Desktop'){'RobloxMultiInstance-Setup.exe'}else{'RobloxLaunchHelper-Setup.exe'}
@@ -17,6 +18,8 @@ foreach($taskAsset in $taskManifest.Assets) {
     if((Get-Item -LiteralPath $taskFile).Length -ne $taskAsset.Size -or (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash -ne $taskAsset.Sha256){throw "Asset mismatch: $($taskAsset.Name)"}
     if($taskAsset.Edition -eq 'Helper' -and ($taskAsset.Payload.Path | Where-Object {$_ -match '(^web/|WebView|Presentation|RobloxMultiInstance\.exe)'})){throw 'Helper payload contains desktop files.'}
     if($taskAsset.Protocol -ne 1){throw 'Unsupported helper protocol.'}
+    $taskLicense=@($taskAsset.Payload | Where-Object Path -eq 'LICENSE')
+    if($taskLicense.Count -ne 1 -or $taskLicense[0].Sha256 -ne (Get-FileHash -LiteralPath (Join-Path $taskRepositoryRoot 'LICENSE') -Algorithm SHA256).Hash){throw 'Project license missing or mismatched in package payload.'}
     if((Get-Content -LiteralPath ($taskFile+'.sha256') -Raw).Trim() -cne ($taskAsset.Sha256+'  '+$taskAsset.Name)){throw 'Installer checksum sidecar mismatch.'}
     if($taskManifest.Release){
         $taskSignature=Get-AuthenticodeSignature -LiteralPath $taskFile
@@ -57,11 +60,12 @@ try {
         try{$taskHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($taskStream))}finally{$taskStream.Dispose()}
         if($taskHash -ne $taskMatch.Sha256){throw "Portable member digest mismatch: $($taskEntry.FullName)"}
         if($taskEntry.FullName -in @('RobloxMultiInstance.exe','RobloxLaunchHelper.exe','rmi.exe','RobloxMultiInstance.dll','RobloxLaunchHelper.dll','rmi.dll','RobloxMultiInstance.Core.dll','RobloxMultiInstance.Backend.dll','RobloxMultiInstance.Presentation.dll')){
-            $taskVersionDirectory=Join-Path $PSScriptRoot ('.build/release-version-check/'+[guid]::NewGuid().ToString('N'))
+            $taskVersionDirectory=Join-Path $taskRepositoryRoot ('.build/release-version-check/'+[guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force $taskVersionDirectory | Out-Null
             $taskVersionFile=Join-Path $taskVersionDirectory $taskEntry.FullName
             [IO.Compression.ZipFileExtensions]::ExtractToFile($taskEntry,$taskVersionFile)
-            if([version][Diagnostics.FileVersionInfo]::GetVersionInfo($taskVersionFile).FileVersion -ne $ExpectedVersion){throw "Portable product version mismatch: $($taskEntry.FullName)"}
+            $taskBinaryVersion=if($taskEntry.FullName -in @('RobloxLaunchHelper.exe','rmi.exe','RobloxLaunchHelper.dll','rmi.dll','RobloxMultiInstance.Core.dll') -and $taskDesktop.HelperVersion){[version]$taskDesktop.HelperVersion}else{$ExpectedVersion}
+            if([version][Diagnostics.FileVersionInfo]::GetVersionInfo($taskVersionFile).FileVersion -ne $taskBinaryVersion){throw "Portable product version mismatch: $($taskEntry.FullName)"}
             $taskBinaryBytes=[IO.File]::ReadAllBytes($taskVersionFile)
             if([Text.Encoding]::UTF8.GetString($taskBinaryBytes) -match '(?i)[a-z]:[\\/]+Users[\\/]+' -or [Text.Encoding]::Unicode.GetString($taskBinaryBytes) -match '(?i)[a-z]:[\\/]+Users[\\/]+'){throw "Developer user-profile path embedded in release binary: $($taskEntry.FullName)"}
         }

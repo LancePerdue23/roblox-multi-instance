@@ -1,6 +1,8 @@
 import {SpecialBadge} from './SpecialBadges';
-import {SupporterStudio,HeartBadge} from './SupporterCosmetics';
-import {useEffect,useLayoutEffect,useRef,useState,type ReactNode} from 'react';
+import {SupporterStudio,HeartBadge,tiers} from './SupporterCosmetics';
+import {SupportCreditPreview,useSupportCreditPreview} from './SupportCreditPreview';
+import {creditTier,robuxThresholds,nextPassIndex,passForGap,tierProgress} from './supportCredit';
+import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties,type ReactNode} from 'react';
 import {connected,request,subscribe} from './bridge';
 import {ThemedSelect} from './ThemedSelect';
 import type {TelemetryDto,SupportDto,AccountsStateDto,LaunchTargetDto,GameCardDto,LaunchBatchProgressDto,AccountBatchDto,PresetDto} from './backend.generated';
@@ -36,34 +38,77 @@ export function PrivacyPage({busy}:{busy:boolean}){
 }
 
 export function SupportPage({busy,confirm,onChange}:{busy:boolean;confirm:ConfirmAction;onChange:(s:SupportDto)=>void}){
- const [state,setState]=useState<SupportDto>();const [error,setError]=useState('');const [working,setWorking]=useState(false);
+ const [state,setState]=useState<SupportDto>();const [error,setError]=useState('');const [working,setWorking]=useState(false);const [activeAction,setActiveAction]=useState('');const [checkProgress,setCheckProgress]=useState('');
+ const [amount,setAmount]=useState('5.00'),[recovery,setRecovery]=useState(''),[restore,setRestore]=useState(''),[reveal,setReveal]=useState(0);
+ const simulation=useSupportCreditPreview();
+ const realTier=state?.verifiedTier??(state?.supported?0:-1);
+ const totalRobux=simulation??state?.totalRobux??0;
+ const robloxTier=simulation!==null?creditTier(simulation):state?.robloxTier??-1;
+ const verifiedTier=simulation!==null?robloxTier:realTier;
+ const passes=state?.robloxPasses??[];
+ const [selection,setSelection]=useState(0);
+ const pass=passes[selection]??passes[0];
+ const knownTier=useRef<number|undefined>(undefined);
+ const wasSimulating=useRef(simulation!==null);
+ useEffect(()=>{if(!state)return;const reset=wasSimulating.current&&simulation===null;if(!reset&&knownTier.current!==undefined&&verifiedTier>knownTier.current)setReveal(n=>n+1);knownTier.current=verifiedTier;wasSimulating.current=simulation!==null;},[verifiedTier,!!state,simulation!==null]);
+ const passSignature=passes.map(p=>p.id).join(',');
+ useEffect(()=>setSelection(nextPassIndex(passes,totalRobux,robloxTier)),[totalRobux,robloxTier,passSignature]);
+ const amountCents=/^\d{1,4}(\.\d{1,2})?$/.test(amount)?Math.round(Number(amount)*100):0;
+ const usdTier=state?.usdTier??creditTier(state?.totalCents??0);
+ const nextThreshold=[300,700,1500][usdTier+1];
+ const remaining=nextThreshold===undefined?0:Math.max(0,nextThreshold-(state?.totalCents??0));
+ const topUp=Math.max(50,remaining);
  const onChangeRef=useRef(onChange);onChangeRef.current=onChange;
  const save=(s:SupportDto)=>{setState(s);onChangeRef.current(s);};
- async function act(command:string,payload:object={}){setWorking(true);setError('');try{const s=await request<SupportDto>(command,payload);if(s&&typeof s.supported==='boolean')save(s);}catch(e){setError(failure(e));}finally{setWorking(false);}}
- useEffect(()=>{void act('support.get');},[]);
+ async function act(command:string,payload:object={}){if(command==='support.checkRoblox')setCheckProgress('Checking connected accounts…');setActiveAction(command);setWorking(true);setError('');try{const s=await request<SupportDto>(command,payload);if(s&&typeof s.supported==='boolean')save(s);return true;}catch(e){setError(failure(e));return false;}finally{setWorking(false);setActiveAction('');setCheckProgress('');}}
+ useEffect(()=>{void act('support.get');return subscribe(event=>{if(event.event==='support.changed')save(event.data as SupportDto);if(event.event==='support.robloxProgress')setCheckProgress((event.data as {message:string}).message);});},[]);
  useEffect(()=>{
   if(!state?.pending||!state.configured)return;
   let stopped=false;let timer:ReturnType<typeof setTimeout>;let attempts=0;
-  const tick=async()=>{try{const s=await request<SupportDto>('support.claim');if(!stopped)save(s);if(!s.pending)return;}catch{/* Manual check remains available if checkout is offline. */}if(!stopped&&++attempts<120)timer=setTimeout(tick,5000);};
+  const tick=async()=>{try{const s=await request<SupportDto>('support.claim');if(!stopped)save(s);if(!s.pending)return;}catch{/* Manual check remains available offline. */}if(!stopped&&++attempts<120)timer=setTimeout(tick,5000);};
   timer=setTimeout(tick,5000);return()=>{stopped=true;clearTimeout(timer);};
  },[state?.pending,state?.configured]);
- return <section className="card"><div className="card-heading"><div><h2>Support development</h2><p>Roblox Multi Instance is free and will stay free.</p></div>{state?.supported&&<HeartBadge/>}</div><div className="padded stack feature-content">
+ const projectedTier=creditTier(totalRobux+(pass?.credit??0));
+ const checkingRoblox=activeAction==='support.checkRoblox';
+ return <section className="card support-page"><div className="card-heading"><div><h2>Support development</h2><p>Optional support. Every feature stays free.</p></div>{verifiedTier>=0&&<HeartBadge tier={verifiedTier}/>}</div><div className="padded stack feature-content">
   {error&&<p role="alert" className="error-banner">{error}</p>}
-  <p>Contributions are optional and never unlock features. Support with Stripe or donate Robux through our Roblox gamepass.</p>
-  <SupporterStudio unlockedTier={state?.supported?0:-1}/>
-  <h3>Support with USD</h3><p>A completed one-time Stripe contribution earns cosmetic supporter recognition as a thank-you.</p>
-  {state&&!state.configured&&<p className="notice">Stripe contributions are not available in this build yet. Trusted receipts can still be used offline when their signing key is included.</p>}
-  <div className="button-row"><button className="primary" disabled={busy||working||!state?.configured} onClick={()=>void act('support.start')}>{state?.pending?'Resume checkout…':'Support with USD…'}</button>{state?.pending&&<><button disabled={busy||working} onClick={()=>void act('support.claim')}>Check payment status</button><button disabled={busy||working} onClick={()=>void (async()=>{if(await confirm('Forget pending checkout','Check payment status first if you paid. Forgetting this checkout removes its local claim secret; a completed contribution may then require manual receipt recovery through the developer.'))await act('support.forgetPending',{confirmed:true});})()}>Forget pending checkout…</button></>}</div>
-  {state?.message&&<p role="status">{state.message}</p>}
+  <section className="robux-support stack" aria-labelledby="robux-heading">
+   <div className="support-summary"><h3 id="robux-heading">Support with Robux</h3>{simulation!==null&&<span className="badge">Simulated credit · dev only</span>}</div>
+   <p className="support-credit" aria-live="polite">{simulation!==null?'Simulated':'Verified'} Robux credit: <strong>{totalRobux.toLocaleString('en-US')}</strong> · {robloxTier>=0?tiers[robloxTier]:'No tier yet'}</p>
+   <div className="robux-tier-progress">{tiers.map((name,index)=>{const start=index===0?0:robuxThresholds[index-1],end=robuxThresholds[index],fraction=tierProgress(totalRobux,index);return <span key={name} className={robloxTier>=index?'earned':fraction>0?'in-progress':''}><span className="robux-tier-track" role="progressbar" aria-label={'Progress to '+name} aria-valuemin={start} aria-valuemax={end} aria-valuenow={Math.max(start,Math.min(end,totalRobux))} aria-valuetext={totalRobux.toLocaleString('en-US')+' of '+end.toLocaleString('en-US')+' Robux'}><i style={{width:fraction*100+'%'}}/></span><strong>{name}</strong><small>{robloxTier>=index?'Earned':Math.max(0,end-totalRobux).toLocaleString('en-US')+' more Robux'}</small></span>;})}</div>
+   {passes.length>0&&<>
+    <label className="robux-slider-label"><span className="robux-slider-heading"><span>Choose a pass</span><span key={pass?.id} className="robux-selected-amount">{pass?.credit.toLocaleString('en-US')} <small>Robux</small></span></span><input style={{'--slider-fill':(passes.length>1?Math.min(selection,passes.length-1)/(passes.length-1)*100:0)+'%'} as CSSProperties} aria-label="Donation amount" type="range" min="0" max={passes.length-1} step="1" value={Math.min(selection,passes.length-1)} aria-valuetext={(pass?.credit??0).toLocaleString('en-US')+' Robux'} disabled={busy||working} onChange={event=>setSelection(Number(event.target.value))}/></label>
+    <div className="robux-slider-scale" aria-hidden="true">{passes.map((p,index)=><i key={p.id} className={tiers.some((_,tier)=>tier>robloxTier&&passForGap(passes,Math.max(0,robuxThresholds[tier]-totalRobux))===index)?'milestone':''} style={{left:(passes.length>1?index/(passes.length-1)*100:0)+'%'}}/>)}</div>
+    <div className="robux-slider-markers" aria-label="Passes that reach the next tiers">{tiers.map((name,index)=>{if(index<=robloxTier)return null;const gap=Math.max(0,robuxThresholds[index]-totalRobux),position=passForGap(passes,gap);return <button key={name} type="button" disabled={busy||working} className={selection===position?'selected':''} aria-pressed={selection===position} onClick={()=>setSelection(position)}><span>{name}</span><strong>{passes[position]?.credit.toLocaleString('en-US')} Robux</strong></button>;})}</div>
+    <div className="robux-purchase-row"><ThemedSelect label="Pass amount" value={pass?.id??''} options={passes.map(p=>({value:p.id,label:p.credit.toLocaleString('en-US')+' Robux'}))} disabled={busy||working} onChange={id=>setSelection(passes.findIndex(p=>p.id===id))}/><button className="primary" disabled={busy||working||!state?.robloxConfigured||!pass} onClick={()=>void act('support.roblox',{passId:pass?.id})}>Buy pass <span className="robux-buy-arrow" aria-hidden="true">↗</span></button><button aria-label="Verify purchases" aria-busy={checkingRoblox} disabled={busy||working||!state?.robloxConfigured} onClick={()=>void act('support.checkRoblox')}><span className={'robux-check-icon'+(checkingRoblox?' checking':'')} aria-hidden="true">↻</span> {checkingRoblox?'Checking…':'Verify purchases'}</button></div>
+    <p className="muted purchase-projection" aria-live="polite">{projectedTier>robloxTier?'This amount reaches '+tiers[Math.max(0,projectedTier)]+'.':robloxTier===2?'All supporter tiers earned. Thank you!':'This amount adds '+(pass?.credit??0).toLocaleString('en-US')+' credit.'} Recognition updates after verification.</p>
+   </>}
+   {!passes.length&&<div className="button-row"><button disabled={busy||working||!state?.robloxConfigured} onClick={()=>void act('support.roblox')}>Buy pass</button><button disabled={busy||working||!state?.robloxConfigured} onClick={()=>void act('support.checkRoblox')}>Verify purchases</button></div>}
+   {state&&!state.robloxConfigured&&<p className="notice">Robux support is unavailable in this build.</p>}
+   <p className="muted">Verify purchases finds support passes across all your connected accounts and updates your total automatically. Saved credit is available offline.</p>
+   <p className="purchase-check-status" role="status" aria-live="polite">{checkProgress||state?.message}</p>
+   {__LOCAL_SUPPORTER_PREVIEW__&&<SupportCreditPreview realCredit={state?.totalRobux??0} selectedCredit={pass?.credit??0} disabled={busy||working} onReset={()=>act('support.devResetRoblox',{confirmed:true})}/>}
+  </section>
+  <section className="support-usd"><h3>Support with USD</h3>{!state?.configured?<><p className="muted">Stripe is not available yet.</p><button disabled>Support with USD…</button></>:<details><summary>USD contributions and recovery</summary><div className="stack">
+  <p aria-live="polite">Verified USD total: ${((state?.totalCents??0)/100).toFixed(2)}{nextThreshold!==undefined?' · $'+(remaining/100).toFixed(2)+' to '+['Supporter','Supporter+','Super Supporter'][verifiedTier+1]:' · All supporter tiers unlocked'}</p>
+  <p className="muted">Minimum contribution: $0.50 USD. If less remains to the next tier, the top-up uses this minimum.</p>
+  <label>Contribution amount (USD)<input type="text" inputMode="decimal" value={amount} disabled={busy||working||state?.pending} onChange={e=>setAmount(e.target.value)}/></label>
+  {nextThreshold!==undefined&&!state?.pending&&<button disabled={busy||working||!state?.configured} onClick={()=>setAmount((topUp/100).toFixed(2))}>Use next-tier top-up (${(topUp/100).toFixed(2)})</button>}
+  <div className="button-row"><button className="primary" disabled={busy||working||!state?.configured||(!state?.pending&&(amountCents<50||amountCents>100000))} onClick={()=>void act('support.start',{amountCents})}>{state?.pending?'Resume checkout…':'Support with USD…'}</button>{state?.pending&&<><button disabled={busy||working} onClick={()=>void act('support.claim')}>Check payment status</button><button disabled={busy||working} onClick={()=>void (async()=>{if(await confirm('Forget pending checkout','Check payment status first if you paid. Forgetting this checkout removes its local claim secret; use your recovery code to restore contributions.'))await act('support.forgetPending',{confirmed:true});})()}>Forget pending checkout…</button></>}</div>
   <p>Checkout opens in your browser. Stripe processes payment details and provides financial records to the developer. This app’s supporter service does not retain donor names or emails, and never links contributions to Roblox accounts or error reports.</p>
-  <h3>Support with Robux</h3>
-  <p>Open our donation gamepass on Roblox and purchase it with Robux. Roblox shows the creator and current price before you buy. A gamepass can be purchased once per Roblox account.</p>
-  {state&&!state.robloxConfigured&&<p className="notice">Robux donations are coming soon while we set up our group gamepass.</p>}
-  <div className="button-row"><button disabled={busy||working||!state?.robloxConfigured} onClick={()=>void act('support.roblox')}>Support with Robux…</button><button disabled={busy||working||!state?.robloxConfigured} onClick={()=>void act('support.checkRoblox')}>Check purchases</button></div>
-  <p className="muted">Own any qualifying donation gamepass on a connected Roblox account to receive supporter recognition across this app. Successful verification stays on this installation, even offline or after removing the account. Purchase checks send connected Roblox user IDs to Roblox; no account cookies are sent.</p>
-  <h3>Your supporter receipt</h3><p>A signed Stripe receipt verifies the contribution locally. No app account is needed, and the badge works offline. Keep an exported receipt if you want to move it to another computer; it is transferable.</p>
-  <label className="check"><input type="checkbox" checked={state?.showBadge??false} disabled={busy||working||!state?.supported} onChange={e=>void act('support.visibility',{visible:e.target.checked})}/>Show my supporter badge</label>
-  <div className="button-row"><button disabled={busy||working||!connected()} onClick={()=>void act('support.import')}>Import receipt…</button><button disabled={busy||working||!state?.receiptAvailable} onClick={()=>void act('support.export')}>Export receipt…</button><button className="danger-text" disabled={busy||working||!state?.receiptAvailable} onClick={()=>void (async()=>{if(await confirm('Remove supporter receipt','Remove the receipt from this computer? Export it first if you want to keep a backup. This does not refund the contribution.'))await act('support.remove',{confirmed:true});})()}>Remove receipt…</button></div>
+  <p className="muted">Refunds and chargebacks reduce your credited total. Cosmetics already earned stay unlocked. USD and Robux are counted separately. Older base receipts retain Supporter recognition but contain no historical USD amount.</p>
+  <h3>Your contribution recovery code</h3><p>Save this private code before paying. It restores your contribution total and lets future payments add to the same supporter identity on another computer. Anyone with it can access that identity. A receipt backup alone restores cosmetics.</p>
+  <div className="button-row"><button disabled={busy||working||!state?.configured} onClick={()=>void (async()=>{setWorking(true);setError('');try{const result=await request<{code:string}>('support.recovery');setRecovery(result.code);}catch(e){setError(failure(e));}finally{setWorking(false);}})()}>Show recovery code</button><button disabled={busy||working||!state?.configured||!state?.recoveryAvailable} onClick={()=>void act('support.refresh')}>Refresh contribution total</button></div>
+  {recovery&&<div><label>Private supporter recovery code<input readOnly value={recovery} autoComplete="off" spellCheck={false}/></label><button onClick={()=>setRecovery('')}>Hide recovery code</button></div>}
+  <label>Restore supporter recovery code<input type="password" autoComplete="off" value={restore} onChange={e=>setRestore(e.target.value)}/></label><button disabled={busy||working||!state?.configured||!/^[A-Za-z0-9_-]{43}$/.test(restore)||state?.pending} onClick={()=>void (async()=>{if(await confirm('Restore supporter identity','Replace the contribution identity and receipt on this computer? Save your current recovery code first.')){if(await act('support.restore',{code:restore})){setRestore('');setRecovery('');}}})()}>Restore contributions</button>
+  </div></details>}</section>
+  <SupporterStudio unlockedTier={verifiedTier} reveal={reveal} robuxCredit={totalRobux} robuxTier={robloxTier}/>
+  <details className="support-details"><summary>Support settings and details</summary><div className="stack">
+   <label className="check"><input type="checkbox" checked={state?.showBadge??false} disabled={busy||working||!state?.supported} onChange={e=>void act('support.visibility',{visible:e.target.checked})}/>Show my supporter badge</label>
+   <p className="muted">Each account/pass purchase counts once at its fixed denomination. Verified credit stays on this computer after account removal and works offline. Roblox sets the purchase price; ownership does not reveal the amount paid.</p>
+   <p className="muted">Checks send connected account IDs to Roblox without cookies. To restore Robux recognition elsewhere, connect the same accounts and check again. USD and Robux totals stay separate.</p>
+   <details><summary>Stripe receipt backups</summary><p className="muted">Signed receipts restore Stripe cosmetics. Your private recovery code restores USD contributions.</p><div className="button-row"><button disabled={busy||working||!connected()} onClick={()=>void act('support.import')}>Import receipt…</button><button disabled={busy||working||!state?.receiptAvailable} onClick={()=>void act('support.export')}>Export receipt…</button><button className="danger-text" disabled={busy||working||!state?.receiptAvailable} onClick={()=>void (async()=>{if(await confirm('Remove supporter receipt','Remove this computer’s Stripe receipt? Export it first to keep a backup. This does not refund contributions or remove Robux credit.'))await act('support.remove',{confirmed:true});})()}>Remove receipt…</button></div></details>
+  </div></details>
  </div></section>;
 }
 

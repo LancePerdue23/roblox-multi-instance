@@ -64,7 +64,7 @@ public sealed partial class DesktopBackend
     SupportDto SupportState(SupportState? checkedState=null)
     {
         var s=checkedState??support.State();
-        return new(s.Configured,s.Supported,s.ShowBadge,s.Pending,s.Message,s.RobloxConfigured,s.ReceiptAvailable);
+        return new(s.Configured,s.Supported,s.ShowBadge,s.Pending,s.Message,s.RobloxConfigured,s.ReceiptAvailable,s.VerifiedTier,s.TotalCents,s.RecoveryAvailable,s.TotalRobux,s.RobloxTier,s.UsdTier,s.RobloxPasses);
     }
 
     SpecialBadgeStateDto BadgeState()=>specialBadges.State(accounts.State().Accounts.Select(a=>a.RobloxUserId??""));
@@ -95,15 +95,32 @@ public sealed partial class DesktopBackend
                 var message=specialBadges.Import(path,receipt,user);
                 var state=BadgeState() with {Message=message,ClaimedBadgeId=grant.Badge};Event?.Invoke(requestId.Value??"recognition","badges.changed",state);return state;
             }
-            case "support.get": return SupportState(await support.CheckRobloxAsync(accounts.State().Accounts.Select(a=>a.RobloxUserId??""),token:token));
-            case "support.checkRoblox": return SupportState(await support.CheckRobloxAsync(accounts.State().Accounts.Select(a=>a.RobloxUserId??""),true,token));
+            case "support.get": return SupportState();
+            case "support.devResetRoblox":
+                if(!SupportService.DeveloperToolsEnabled)throw new DesktopOperationException("DEV_ONLY","Credit reset is available only in the local development build.");
+                Confirm(p);
+                return SupportState(await support.ResetRobloxVerificationAsync(token));
+            case "support.checkRoblox": {
+                bool scanAll=false;
+                if(p.TryGetProperty("scanAll",out var all)){
+                    if(all.ValueKind is not (JsonValueKind.True or JsonValueKind.False))throw new ArgumentException("Choose whether to scan all passes.");
+                    scanAll=all.GetBoolean();
+                }
+                string selectedPass=Text(p,"passId");
+                if(scanAll&&selectedPass.Length>0)throw new ArgumentException("Choose one pass or a full scan.");
+                return SupportState(await support.CheckRobloxAsync(accounts.State().Accounts.Select(a=>a.RobloxUserId??""),true,token,
+                    message=>Event?.Invoke(requestId.Value??"support","support.robloxProgress",new {message}),selectedPass.Length==0?null:selectedPass));
+            }
             case "support.roblox":
-                Process.Start(new ProcessStartInfo(support.RobloxDonationUri().AbsoluteUri){UseShellExecute=true})?.Dispose();
+                Process.Start(new ProcessStartInfo(support.RobloxDonationUri(string.IsNullOrEmpty(Text(p,"passId"))?null:Text(p,"passId")).AbsoluteUri){UseShellExecute=true})?.Dispose();
                 return SupportState();
             case "support.start":
-                var checkout=await support.StartAsync(token);
+                var checkout=await support.StartAsync(p.TryGetProperty("amountCents",out var amount)?amount.GetInt32():500,token);
                 Process.Start(new ProcessStartInfo(checkout.AbsoluteUri){UseShellExecute=true})?.Dispose();
                 return SupportState();
+            case "support.recovery": return new {code=support.RecoveryCode()};
+            case "support.refresh": return SupportState(await support.RefreshAsync(token:token));
+            case "support.restore": return SupportState(await support.RefreshAsync(Text(p,"code"),token));
             case "support.claim": await support.ClaimAsync(token);return SupportState();
             case "support.visibility": support.SetBadgeVisible(Bool(p,"visible"));return SupportState();
             case "support.remove": Confirm(p);support.RemoveReceipt();return SupportState();
@@ -132,7 +149,7 @@ public sealed partial class DesktopBackend
             case "accounts.connect":
                 if(AccountSignIn is null)throw new DesktopOperationException("SIGN_IN_UNAVAILABLE","Account sign-in requires the desktop host.");
                 var connectedAccounts=await accounts.ConnectAsync(string.IsNullOrEmpty(Text(p,"id"))?null:Text(p,"id"),Text(p,"nickname"),AccountSignIn,token);
-                var recognition=await support.CheckRobloxAsync(connectedAccounts.Accounts.Select(a=>a.RobloxUserId??""),true,token);
+                var recognition=support.State();
                 Event?.Invoke(requestId.Value??"support","support.changed",SupportState(recognition));
                 Event?.Invoke(requestId.Value??"recognition","badges.changed",BadgeState());
                 return connectedAccounts;

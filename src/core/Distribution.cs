@@ -7,7 +7,7 @@ using System.Security.AccessControl;
 namespace RobloxLaunchHelper;
 
 internal sealed record PayloadFile(string Path,long Size,string Sha256);
-internal sealed record EditionManifest(int Schema,string Edition,string Version,int Protocol,string OwnerSid,PayloadFile[] Files);
+internal sealed record EditionManifest(int Schema,string Edition,string Version,int Protocol,string OwnerSid,PayloadFile[] Files,string? HelperVersion=null);
 internal sealed record SetupRequest(string Edition,bool Integration,string? Player);
 internal static class Distribution
 {
@@ -15,6 +15,8 @@ internal static class Distribution
     internal static string MetadataPath=>Path.Combine(Program.InstallDirectory,"edition.json");
     internal static string RequestPath=>Path.Combine(Program.InstallDirectory,"setup-request.json");
     internal static string SetupName(string edition)=>edition switch { "Desktop"=>"RobloxMultiInstance-Setup.exe","Helper"=>"RobloxLaunchHelper-Setup.exe",_=>throw new InvalidDataException("Unknown edition.") };
+    internal static Version HelperVersion(EditionManifest manifest) => UpdateVersion.Parse(manifest.HelperVersion ?? manifest.Version) ?? throw new InvalidDataException("Invalid helper version.");
+    internal static bool Compatible(EditionManifest manifest,string? helperVersion,string? runtimeVersion=null) => manifest.Protocol==ProtocolVersion && HelperVersion(manifest)==UpdateVersion.Parse(helperVersion) && HelperVersion(manifest)==UpdateVersion.Parse(runtimeVersion ?? typeof(Program).Assembly.GetName().Version?.ToString());
     internal static void ValidateUpgrade(EditionManifest incoming,EditionManifest? previous,bool helperExists,string? helperVersion)
     {
         Validate(incoming);
@@ -24,7 +26,7 @@ internal static class Distribution
         if(helperExists)
         {
             var installed=UpdateVersion.Parse(helperVersion)??throw new UserError("The installed helper version could not be verified. Repair or uninstall the existing installation first.");
-            if(candidate<installed)throw new UserError("Downgrades are not supported. Uninstall the newer development installation first; settings and history can be retained.");
+            if(HelperVersion(incoming)<installed)throw new UserError("Downgrades are not supported. Uninstall the newer development installation first; settings and history can be retained.");
         }
     }
     internal static bool UnsupportedProtocol()
@@ -46,6 +48,7 @@ internal static class Distribution
     internal static void Validate(EditionManifest data)
     {
         if(data.Schema!=1 || data.Edition is not ("Desktop" or "Helper") || UpdateVersion.Parse(data.Version) is null || data.Protocol!=ProtocolVersion || data.Files.Length is <1 or >4096)throw new InvalidDataException("Unsupported installation manifest.");
+        if(HelperVersion(data)>UpdateVersion.Parse(data.Version) || data.Edition=="Helper" && HelperVersion(data)!=UpdateVersion.Parse(data.Version))throw new InvalidDataException("Unsupported helper compatibility contract.");
         if(data.Files.Select(x=>x.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count()!=data.Files.Length)throw new InvalidDataException("Duplicate payload entry.");
         foreach(var file in data.Files)
         {
@@ -61,7 +64,7 @@ internal static class Distribution
         if(!actual.SequenceEqual(manifest.Files.Select(x=>x.Path).Order(StringComparer.OrdinalIgnoreCase),StringComparer.OrdinalIgnoreCase))throw new InvalidDataException("Payload does not match its allowlist.");
         foreach(var item in manifest.Files){string file=Path.Combine(source,item.Path);UpdateFiles.RejectLinks(file);using var stream=File.OpenRead(file);if(stream.Length!=item.Size||!Convert.ToHexString(SHA256.HashData(stream)).Equals(item.Sha256,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException("Payload verification failed.");}
         foreach(string exe in manifest.Edition=="Desktop"?new[]{"RobloxMultiInstance.exe","RobloxLaunchHelper.exe","rmi.exe"}:new[]{"RobloxLaunchHelper.exe","rmi.exe"})
-            if(UpdateVersion.Parse(FileVersionInfo.GetVersionInfo(Path.Combine(source,exe)).FileVersion)!=UpdateVersion.Parse(manifest.Version))throw new InvalidDataException("Payload executable versions differ.");
+            if(UpdateVersion.Parse(FileVersionInfo.GetVersionInfo(Path.Combine(source,exe)).FileVersion)!=(exe=="RobloxMultiInstance.exe"?UpdateVersion.Parse(manifest.Version):HelperVersion(manifest)))throw new InvalidDataException("Payload executable versions differ.");
     }
     internal static async Task<OperationResult> RunInstalledAsync(string action,CancellationToken token)
     {

@@ -2,14 +2,15 @@
 param(
     [ValidateSet('Synthetic','Live')][string]$Mode = 'Synthetic',
     [string]$RunDirectory,
-    [string]$Dotnet = (Join-Path $PSScriptRoot '.build/sdk/dotnet.exe'),
+    [string]$Dotnet = (Join-Path (Join-Path $PSScriptRoot '../..') '.build/sdk/dotnet.exe'),
     [ValidateRange(1,3600)][int]$SoakSeconds = 900,
     [uint32]$Seed = 3102026
 )
+$taskRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $ErrorActionPreference = 'Stop'
 if (!$RunDirectory) {
     if ($Mode -eq 'Live') { throw 'Live mode requires -RunDirectory from a completed synthetic build.' }
-    $RunDirectory = Join-Path $PSScriptRoot ('.build/audits/' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff'))
+    $RunDirectory = Join-Path $taskRepositoryRoot ('.build/audits/' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff'))
 }
 $RunDirectory = [IO.Path]::GetFullPath($RunDirectory)
 if ($Mode -eq 'Synthetic' -and (Test-Path -LiteralPath $RunDirectory) -and (Get-ChildItem -LiteralPath $RunDirectory -Force | Select-Object -First 1)) {
@@ -63,7 +64,7 @@ function Save-Report {
     $identity = if (Test-Path (Join-Path $RunDirectory 'build.json')) { Get-Content (Join-Path $RunDirectory 'build.json') -Raw | ConvertFrom-Json } else {$null}
     $report = @{updatedUtc=[DateTime]::UtcNow.ToString('o');build=$identity;results=@($steps.ToArray())}
     $report | ConvertTo-Json -Depth 25 | Set-Content -LiteralPath $reportPath -Encoding utf8
-    & (Join-Path $PSScriptRoot 'src/desktop/audit/Write-Report.ps1') -RunDirectory $RunDirectory
+    & (Join-Path $taskRepositoryRoot 'src/desktop/audit/Write-Report.ps1') -RunDirectory $RunDirectory
     Write-Host "Audit report: $reportPath"
     $steps | Group-Object outcome | ForEach-Object { Write-Host "$($_.Name): $($_.Count)" }
 }
@@ -71,15 +72,15 @@ $taskEnv = @('AUDIT_OUTPUT','AUDIT_WEB_ROOT','AUDIT_SOAK_SECONDS','AUDIT_SEED','
 $savedEnv = @{}
 foreach ($name in $taskEnv) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
 try {
-    $env:DOTNET_CLI_HOME = Join-Path $PSScriptRoot '.build/home'
-    $env:NUGET_PACKAGES = Join-Path $PSScriptRoot '.build/packages'
+    $env:DOTNET_CLI_HOME = Join-Path $taskRepositoryRoot '.build/home'
+    $env:NUGET_PACKAGES = Join-Path $taskRepositoryRoot '.build/packages'
     if ($Mode -eq 'Synthetic') {
         $build = Join-Path $RunDirectory 'build'
-        $built = Invoke-AuditStep 'Build-current-desktop' { & (Join-Path $PSScriptRoot 'Build.ps1') -Dotnet $Dotnet -Output $build }
+        $built = Invoke-AuditStep 'Build-current-desktop' { & (Join-Path $taskRepositoryRoot 'Build.ps1') -Dotnet $Dotnet -Output $build }
         if (!$built) { throw 'Current build failed; dependent audit layers cannot run.' }
         $harness = Join-Path $RunDirectory 'harness'
         $nativeBuilt = Invoke-AuditStep 'Build-native-harness' {
-            & $Dotnet publish (Join-Path $PSScriptRoot 'src/desktop/audit/AuditHarness.csproj') -c Release -r win-x64 --self-contained true -p:NuGetAudit=false -p:UseSharedCompilation=false --disable-build-servers -o $harness
+            & $Dotnet publish (Join-Path $taskRepositoryRoot 'src/desktop/audit/AuditHarness.csproj') -c Release -r win-x64 --self-contained true -p:NuGetAudit=false -p:UseSharedCompilation=false --disable-build-servers -o $harness
             if ($LASTEXITCODE) { throw 'Native harness build failed.' }
             Copy-Item -LiteralPath (Join-Path $build 'web') -Destination $harness -Recurse -Force
         }
@@ -87,18 +88,18 @@ try {
         $hashes = foreach ($file in $files) { @{path=[IO.Path]::GetRelativePath($RunDirectory,$file.FullName);sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash} }
         $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
         $helper = Join-Path $env:ProgramFiles "RobloxLaunchHelper/$sid/RobloxLaunchHelper.exe"
-        $identity = @{createdUtc=[DateTime]::UtcNow.ToString('o');revision=(& git -C $PSScriptRoot rev-parse HEAD);dirty=[bool](& git -C $PSScriptRoot status --porcelain);helperVersion=if(Test-Path -LiteralPath $helper){[Diagnostics.FileVersionInfo]::GetVersionInfo($helper).FileVersion}else{'not installed'};seed=$Seed;soakSeconds=$SoakSeconds;files=@($hashes)}
+        $identity = @{createdUtc=[DateTime]::UtcNow.ToString('o');revision=(& git -C $taskRepositoryRoot rev-parse HEAD);dirty=[bool](& git -C $taskRepositoryRoot status --porcelain);helperVersion=if(Test-Path -LiteralPath $helper){[Diagnostics.FileVersionInfo]::GetVersionInfo($helper).FileVersion}else{'not installed'};seed=$Seed;soakSeconds=$SoakSeconds;files=@($hashes)}
         $identity | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $RunDirectory 'build.json') -Encoding utf8
-        $null = Invoke-AuditStep 'Current-desktop-regressions' { & (Join-Path $PSScriptRoot 'Test.ps1') -Dotnet $Dotnet }
-        $sharedPassed = Invoke-AuditStep 'Shared-service-regressions' { & (Join-Path $PSScriptRoot 'Test-Shared.ps1') -Dotnet $Dotnet }
-        $sharedReport = Join-Path $PSScriptRoot '.build/shared-test-results.json'
+        $null = Invoke-AuditStep 'Current-desktop-regressions' { & (Join-Path $taskRepositoryRoot 'Test.ps1') -Dotnet $Dotnet }
+        $sharedPassed = Invoke-AuditStep 'Shared-service-regressions' { & (Join-Path $taskRepositoryRoot 'Test-Shared.ps1') -Dotnet $Dotnet }
+        $sharedReport = Join-Path $taskRepositoryRoot '.build/shared-test-results.json'
         if ($sharedPassed -and (Test-Path -LiteralPath $sharedReport)) { Copy-Item -LiteralPath $sharedReport -Destination (Join-Path $RunDirectory 'shared.json') -Force }
         $env:AUDIT_OUTPUT = $RunDirectory
         $env:AUDIT_WEB_ROOT = Join-Path $build 'web'
         $env:AUDIT_SOAK_SECONDS = [string]$SoakSeconds
         $env:AUDIT_SEED = [string]$Seed
         $null = Invoke-AuditStep 'Browser-personas-and-stress' {
-            Push-Location (Join-Path $PSScriptRoot 'src/desktop/web')
+            Push-Location (Join-Path $taskRepositoryRoot 'src/desktop/web')
             try { & npm.cmd exec playwright test -- --config audit.config.ts; if ($LASTEXITCODE) { throw 'One or more browser audit scenarios failed.' } } finally { Pop-Location }
         }
         $browser = Join-Path $RunDirectory 'browser.json'
@@ -123,7 +124,7 @@ try {
         $pageCapture = Join-Path $build 'host-smoke.png'
         if (Test-Path -LiteralPath $pageCapture) { Remove-Item -LiteralPath $pageCapture }
         Add-Result 'Physical DPI and screen reader' 'skipped' 'Requires separate physical display transitions and screen-reader acceptance.' 0 'basic' 'manual'
-        Add-Result 'Live Roblox phase' 'skipped' 'Run Audit.ps1 -Mode Live -RunDirectory with this audit directory; manual checkpoints are required.' 0 'live' 'live'
+        Add-Result 'Live Roblox phase' 'skipped' 'Run scripts/testing/Audit.ps1 -Mode Live -RunDirectory with this audit directory; manual checkpoints are required.' 0 'live' 'live'
     }
     else {
         $manifest = Join-Path $RunDirectory 'build.json'

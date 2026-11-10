@@ -9,6 +9,13 @@ internal static class LaunchStartupTests
 
     internal static void Run(Action<string, Action> run)
     {
+        run("Launch evidence preserves process identity and uncertainty without window titles",()=>
+        {
+            var row=Row(10) with {Windows=[new(1,"private title with ticket")],AnyVisibleWindow=true};
+            string evidence=LaunchStartup.Evidence(new([row],2));
+            Check(evidence.Contains("available=True;unavailable=2")&&evidence.Contains("10@2026-10-31T15:58:00.0000000Z/windows=1/visible=True")&&!evidence.Contains("private"));
+            Check(LaunchStartup.Evidence(InstanceSnapshot.Failed).Contains("available=False"));
+        });
         run("Prelaunch cleanup preserves games, recent clients, changed identities and uncertain snapshots", () =>
         {
             var row = Row(10);

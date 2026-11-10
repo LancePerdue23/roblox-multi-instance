@@ -40,39 +40,58 @@ internal static class UpdateTests
     private static void Async(Func<Task> task) => Task.Run(task).GetAwaiter().GetResult();
     internal static void Run(Action<string, Action> run)
     {
-        run("Private update metadata uses authenticated bounded release lists and explicit prerelease opt-in",()=>Async(async()=>
+        run("Update credential migration deletes only the exact owned generic target and tolerates absence",()=>
         {
-            var list=JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json(prerelease:true))});
-            using var client=Client(request=>{
-                Check(request.RequestUri!.AbsoluteUri=="https://api.github.com/repos/"+UpdateUrls.Repository+"/releases?per_page=100");
-                Check(request.Headers.Authorization?.Parameter=="fixture-token");
-                return new(HttpStatusCode.OK){Content=new ByteArrayContent(list)};
-            });
-            Check(await new GitHubReleaseSource(client,()=>"fixture-token",()=>false).LatestAsync(default) is null);
-            Check((await new GitHubReleaseSource(client,()=>"fixture-token",()=>true).LatestAsync(default))?.Version==New);
-            var helper=JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json(tag:"helper-v1.2.0",prerelease:true))});
-            Check(GitHubReleaseSource.ParseList(helper,"Desktop",true) is null);
-            Check(GitHubReleaseSource.ParseList(helper,"Helper",true)?.Version==New);
-            using var denied=Client(_=>new(HttpStatusCode.Unauthorized));
-            try { await new GitHubReleaseSource(denied,()=>"fixture-token",()=>true).LatestAsync(default);throw new Exception("Expected access failure"); } catch(UserError error) { Check(!error.Message.Contains("fixture-token")); }
-        }));
-        run("Private asset download authenticates only the API request and strips credentials on redirects",()=>Async(async()=>
-        {
-            string directory=Path.Combine(AppContext.BaseDirectory,"private-update-"+Guid.NewGuid().ToString("N"));
-            var api=new Uri("https://api.github.com/repos/"+UpdateUrls.Repository+"/releases/assets/123");
             int calls=0;
-            using var client=Client(request=>{
-                calls++;
-                if(calls==1) { Check(request.RequestUri==api&&request.Headers.Authorization?.Parameter=="fixture-token");Check(request.Headers.Accept.Any(x=>x.MediaType=="application/octet-stream"));return new(HttpStatusCode.Redirect){Headers={Location=new("https://release-assets.githubusercontent.com/fixture")}}; }
-                Check(request.Headers.Authorization is null);return new(HttpStatusCode.OK){Content=new ByteArrayContent(Payload)};
-            });
-            try {
-                var release=Release();release=release with {Asset=release.Asset! with {ApiUrl=api}};
-                using var downloaded=await new UpdateDownloader(client,directory,_=>New,(_,_,_)=>Task.CompletedTask,_=>{},()=>"fixture-token").DownloadAsync(release,null,default);
-                Check(calls==2&&File.Exists(downloaded.Executable));
-                Check(!UpdateUrls.AssetApi(new Uri("https://api.github.com/repos/evil/repo/releases/assets/123")));
-                Check(!UpdateUrls.AssetApi(new Uri(api+"?token=secret")));
-            } finally { if(Directory.Exists(directory))Directory.Delete(directory,true); }
+            foreach(int result in new[]{0,1168,5}) UpdateCredentialMigration.RemoveOwnedCredential((target,type,flags)=>{Check(target=="RobloxMultiInstance/GitHubUpdates/"+UpdateUrls.Repository&&type==1&&flags==0);calls++;return result;});
+            Check(calls==3);
+        });
+        run("Public discovery is anonymous and excludes drafts and prereleases",()=>Async(async()=>
+        {
+            var list=JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json(prerelease:true)),JsonSerializer.Deserialize<JsonElement>(Json())});
+            using var client=Client(request=>{Check(request.RequestUri!.AbsoluteUri=="https://api.github.com/repos/"+UpdateUrls.Repository+"/releases?per_page=100");Check(request.Headers.Authorization is null);return new(HttpStatusCode.OK){Content=new ByteArrayContent(list)};});
+            Check((await new GitHubReleaseSource(client).LatestAsync(default))?.Version==New);
+            var helper=System.Text.Encoding.UTF8.GetBytes(System.Text.Encoding.UTF8.GetString(Json(tag:"helper-v1.2.0")).Replace("RobloxLaunchHelper.exe","RobloxLaunchHelper-Setup.exe"));
+            Check(GitHubReleaseSource.Parse(helper,"Desktop") is null);
+            Check(GitHubReleaseSource.Parse(helper,"Helper")?.Asset is not null);
+        }));
+        run("Single releases select both editions and app-only releases retain the latest applicable helper",()=>
+        {
+            JsonElement Asset(string name,string tag) => JsonSerializer.SerializeToElement(new {name,size=Payload.Length,digest="sha256:"+Digest,browser_download_url=$"https://github.com/{UpdateUrls.Repository}/releases/download/{tag}/{name}"});
+            JsonElement Entry(string tag,params JsonElement[] assets) => JsonSerializer.SerializeToElement(new {tag_name=tag,draft=false,prerelease=false,html_url=$"https://github.com/{UpdateUrls.Repository}/releases/tag/{tag}",assets});
+            var combined=Entry("v1.2.0",Asset(Distribution.SetupName("Desktop"),"v1.2.0"),Asset(Distribution.SetupName("Helper"),"v1.2.0"));
+            var appOnly=Entry("v1.3.0",Asset(Distribution.SetupName("Desktop"),"v1.3.0"));
+            var list=JsonSerializer.SerializeToUtf8Bytes(new[]{combined,appOnly});
+            Check(GitHubReleaseSource.ParseList(list,"Desktop")?.Version==new Version(1,3,0,0));
+            Check(GitHubReleaseSource.ParseList(list,"Helper")?.Version==New);
+            Check(GitHubReleaseSource.Parse(JsonSerializer.SerializeToUtf8Bytes(combined),"Desktop")?.Asset?.Name==Distribution.SetupName("Desktop"));
+            Check(GitHubReleaseSource.Parse(JsonSerializer.SerializeToUtf8Bytes(combined),"Helper")?.Asset?.Name==Distribution.SetupName("Helper"));
+        });
+        run("Explicit helper compatibility permits app-only upgrades without weakening protocol or downgrade checks",()=>
+        {
+            var manifest=new EditionManifest(1,"Desktop","1.2.0",1,"fixture",[new("RobloxMultiInstance.exe",1,Digest),new("RobloxLaunchHelper.exe",1,Digest),new("rmi.exe",1,Digest)],"1.1.0");
+            Distribution.Validate(manifest);
+            Check(Distribution.Compatible(manifest,"1.1.0","1.1.0")&&!Distribution.Compatible(manifest,"1.2.0","1.1.0"));
+            Check(!Distribution.Compatible(manifest with {Protocol=2},"1.1.0","1.1.0"));
+            Check(!Distribution.Compatible(manifest,"1.1.0","1.2.0"));
+            Distribution.ValidateUpgrade(manifest,manifest with {Version="1.1.0"},true,"1.1.0");
+            Throws<UserError>(()=>Distribution.ValidateUpgrade(manifest,manifest,true,"1.2.0"));
+            Throws<InvalidDataException>(()=>Distribution.Validate(manifest with {HelperVersion="1.3.0"}));
+            Throws<InvalidDataException>(()=>Distribution.Validate(manifest with {HelperVersion="invalid"}));
+            Check(Distribution.HelperVersion(manifest with {HelperVersion=null})==New);
+        });
+        run("Update comparisons use the edition version when the helper is retained",()=>
+        {
+            var manifest=new EditionManifest(1,"Desktop","1.2.0",1,"fixture",[],"1.1.0");
+            Check(new UpdateVersionProvider(readVersion:_=>"1.1.0",installedMetadata:()=>manifest).Current()==New);
+        });
+        run("Anonymous discovery follows bounded history pages and never treats a partial history as current",()=>Async(async()=>
+        {
+            var full=JsonSerializer.SerializeToUtf8Bytes(Enumerable.Range(0,100).Select(_=>JsonSerializer.Deserialize<JsonElement>(Json(draft:true))));
+            using var client=Client(request=>{Check(request.Headers.Authorization is null);return new(HttpStatusCode.OK){Content=new ByteArrayContent(request.RequestUri!.Query.Contains("page=2")?JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json())}):full)};});
+            Check((await new GitHubReleaseSource(client).LatestAsync(default))?.Version==New);
+            using var endless=Client(_=>new(HttpStatusCode.OK){Content=new ByteArrayContent(full)});
+            Throws<UserError>(()=>new GitHubReleaseSource(endless).LatestAsync(default).GetAwaiter().GetResult());
         }));
         run("Updates compare numeric release versions and reject unsupported tags without downgrading", () =>
         {
@@ -124,16 +143,18 @@ internal static class UpdateTests
             using (var client = Client(request =>
             {
                 Check(request.RequestUri!.Host == "api.github.com" && request.Headers.UserAgent.Count > 0 && request.Headers.Accept.Count > 0);
-                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(Json()) };
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(new[]{JsonSerializer.Deserialize<JsonElement>(Json())})) };
             })) Check((await new GitHubReleaseSource(client).LatestAsync(default))!.Version == New);
             using (var client = Client(_ => new(HttpStatusCode.NotFound))) { try { await new GitHubReleaseSource(client).LatestAsync(default);throw new Exception("Expected access guidance"); } catch(UserError) {} }
-            foreach (var code in new[] { HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable })
+            using (var client = Client(_ => new(HttpStatusCode.TooManyRequests)))
+                Throws<UserError>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());
+            foreach (var code in new[] { HttpStatusCode.ServiceUnavailable })
             {
                 using var client = Client(_ => new(code));
-                Throws<HttpRequestException>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());
+                Throws<UserError>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());
             }
             using (var client = Client(_ => throw new HttpRequestException("offline")))
-                Throws<HttpRequestException>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());
+                Throws<UserError>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());
             using (var client = Client(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[1024 * 1024 + 1]) }))
                 Throws<InvalidDataException>(() => new GitHubReleaseSource(client).LatestAsync(default).GetAwaiter().GetResult());
             using (var client = new HttpClient(new Handler(async (_, token) => { await Task.Delay(Timeout.Infinite, token); return new(HttpStatusCode.OK); })))
@@ -142,9 +163,9 @@ internal static class UpdateTests
         }));
         run("Direct downloads follow GitHub redirects, verify size digest and version, and retain a leased executable", () => Store(directory => Async(async () =>
         {
-            using var client = Client(request => request.RequestUri!.Host == "github.com"
+            using var client = Client(request => { Check(request.Headers.Authorization is null);return request.RequestUri!.Host == "github.com"
                 ? new(HttpStatusCode.Redirect) { Headers = { Location = new("https://release-assets.githubusercontent.com/fixture") } }
-                : new(HttpStatusCode.OK) { Content = new ByteArrayContent(Payload) });
+                : new(HttpStatusCode.OK) { Content = new ByteArrayContent(Payload) }; });
             var downloader = new UpdateDownloader(client, directory, _ => New, verifyPublisher: _ => {});
             using var download = await downloader.DownloadAsync(Release(), null, default);
             Check(File.ReadAllBytes(download.Executable).SequenceEqual(Payload) && Path.GetFileName(download.Executable) == "RobloxLaunchHelper.exe");

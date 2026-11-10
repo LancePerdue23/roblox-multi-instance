@@ -13,7 +13,7 @@ This assessment covers the working tree based on `8f4e93e5fbf006ae078186143bd187
 | `Test.ps1`, completed in the preceding implementation turn on this source | Pass | Desktop host/preview/backend checks, contracts, frontend build, 17 frontend unit checks, 99 browser checks; 7 local-preview-only checks skipped; account/support/service fixtures pass |
 | `Test-Shared.ps1`, rerun for this assessment | 138/138 pass | Shared helper, process identity, cleanup, update, registry/ACL and placement fixtures; real Roblox integration omitted |
 | `Package.ps1`, rebuilt for this assessment | Pass | Installer and portable desktop packages; unsigned validation mode |
-| `Test-Distribution.ps1 -ExpectedVersion 1.0.1.0` | Pass | Installer hashes, editions, embedded allowlists/payload hashes, portable members and checksums; no installation |
+| `scripts/testing/Test-Distribution.ps1 -ExpectedVersion 1.0.1.0` | Pass | Installer hashes, editions, embedded allowlists/payload hashes, portable members and checksums; no installation |
 | Packaged path scan | Pass for the checked paths | No `badge-owner`, issuer files, assignments, local role switcher or local preview marker in installer payload paths; not a claim of a comprehensive security audit |
 | Focus/close-cancel audit journey | Pass | Mock backend only; verifies one-window focus and cancellation without a close request |
 | All-destinations milestone audit journey | Fail: stale test | Waits for an Activity sidebar button; Activity is now a System tab. Evidence: `.build/release-readiness/browser-audit/browser.json` |
@@ -64,7 +64,7 @@ The scenarios discussed were:
 
 Signup credential recovery and badge-file activation on a clean installation remain part of broader acceptance; the owner's confirmation is not being expanded into a claim that the full isolated Windows matrix was completed.
 
-Signing remains unconfigured. These outputs have `Release=false` and no publisher pin/signature. That matches the current unsigned private-validation workflow; it does not satisfy the signed public release path in `Package.ps1 -Release` and `Test-Distribution.ps1 -RequireSigned`. The public/stable gate also requires the applicable manual acceptance evidence; signing alone is insufficient.
+Signing remains unconfigured. These outputs have `Release=false` and no publisher pin/signature. That matches the current unsigned private-validation workflow; it does not satisfy the signed public release path in `Package.ps1 -Release` and `scripts/testing/Test-Distribution.ps1 -RequireSigned`. The public/stable gate also requires the applicable manual acceptance evidence; signing alone is insufficient.
 
 ## Recommended next milestone
 

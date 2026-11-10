@@ -29,5 +29,6 @@ test('badge previews stay public while replay follows verified supporter status'
   await page.locator('.tier-choice').nth(index).click();
   await expect(page.locator('.cosmetic-stage .heart-badge')).toContainText(index===1?'Supporter+':'Super Supporter');
   await expect(page.getByRole('button',{name:/Replay .* unlock/})).toHaveCount(0);
+  await expect(page.locator('.studio-options')).not.toContainText(/replay/i);
  }
 });

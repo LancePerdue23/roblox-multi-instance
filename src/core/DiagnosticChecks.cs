@@ -64,11 +64,10 @@ internal static class DiagnosticChecks
         {
             if (!File.Exists(Program.InstalledExe)) return Result("helper", CheckState.Failed, DiagnosticCode.NotInstalled, Remediation.Setup);
             string? installed = FileVersionInfo.GetVersionInfo(Program.InstalledExe).FileVersion;
-            string? running = typeof(Program).Assembly.GetName().Version?.ToString();
             if(Distribution.UnsupportedProtocol())return Result("helper",CheckState.Warning,DiagnosticCode.HelperVersionMismatch,Remediation.Setup);
             var metadata=Distribution.Installed();
             if(metadata is null)return Result("helper",CheckState.Warning,DiagnosticCode.LegacyInstallation,Remediation.Setup);
-            bool compatible=UpdateVersion.Parse(installed)==UpdateVersion.Parse(running) && (metadata is null || metadata.Protocol==Distribution.ProtocolVersion && UpdateVersion.Parse(metadata.Version)==UpdateVersion.Parse(installed));
+            bool compatible=Distribution.Compatible(metadata,installed);
             return Result("helper", compatible ? CheckState.Healthy : CheckState.Warning,
                 compatible ? DiagnosticCode.Ready : DiagnosticCode.HelperVersionMismatch, compatible ? Remediation.None : Remediation.Repair);
         }));

@@ -1,0 +1,58 @@
+.support-page .stack{gap:16px}
+.support-page p,.support-page h3{margin:0}
+.support-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.robux-support{padding-bottom:20px;border-bottom:1px solid var(--line)}
+.support-credit{font-size:14px}
+.support-credit strong{font-size:20px;font-variant-numeric:tabular-nums}
+.robux-tier-progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.robux-tier-progress>span{display:flex;flex-direction:column;gap:5px;padding:0 0 10px}
+.robux-tier-track{display:block;height:5px;overflow:hidden;border-radius:8px;background:var(--line);margin-bottom:7px}
+.robux-tier-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 65%,white));transition:width .4s cubic-bezier(.2,.8,.2,1)}
+.robux-tier-progress small{color:var(--muted)}
+.robux-tier-progress .earned small{color:var(--accent)}
+.robux-tier-progress .in-progress strong{color:var(--accent)}
+.robux-slider-label{display:flex;flex-direction:column;gap:10px}
+.robux-slider-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.robux-selected-amount{display:inline-flex;align-items:baseline;gap:5px;color:var(--accent);font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;animation:robux-amount-arrive .18s ease-out}
+.robux-selected-amount small{font-size:12px;font-weight:500;color:var(--muted)}
+.robux-slider-label input[type=range]{appearance:none;width:100%;padding:0;min-height:32px;margin:0;border:0;background:transparent;box-shadow:none;accent-color:var(--accent);cursor:pointer}
+.robux-slider-label input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:8px;background:linear-gradient(90deg,var(--accent) 0%,var(--accent) var(--slider-fill),var(--line) var(--slider-fill),var(--line) 100%)}
+.robux-slider-label input[type=range]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:3px solid var(--surface);border-radius:50%;margin-top:-7px;background:var(--accent);box-shadow:0 0 0 1px var(--accent);transition:transform .16s ease,box-shadow .2s ease}
+.robux-slider-label input[type=range]:hover:not(:disabled)::-webkit-slider-thumb{transform:scale(1.15);box-shadow:0 0 0 5px var(--accent-soft),0 0 16px var(--accent-soft)}
+.robux-slider-label input[type=range]:active:not(:disabled)::-webkit-slider-thumb{transform:scale(1.28);box-shadow:0 0 0 7px var(--accent-soft)}
+.robux-slider-label input[type=range]::-moz-range-track{height:6px;border-radius:8px;background:linear-gradient(90deg,var(--accent) 0%,var(--accent) var(--slider-fill),var(--line) var(--slider-fill),var(--line) 100%)}
+.robux-slider-label input[type=range]::-moz-range-thumb{width:15px;height:15px;border:3px solid var(--surface);border-radius:50%;background:var(--accent)}
+.robux-slider-label input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
+.robux-slider-label input[type=range]:disabled{opacity:.5;cursor:default}
+.robux-slider-scale{position:relative;height:6px;margin:-16px 8px 0;pointer-events:none}
+.robux-slider-scale i{position:absolute;height:4px;width:2px;background:var(--line);transform:translateX(-50%)}
+.robux-slider-scale i.milestone{height:7px;width:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--surface)}
+.robux-slider-markers{display:flex;gap:8px;flex-wrap:wrap}
+.robux-slider-markers button{display:flex;align-items:center;gap:8px;font-size:11px;padding:7px 10px}
+.robux-slider-markers button.selected{border-color:var(--accent);background:var(--accent-soft)}
+.robux-slider-markers button,.robux-purchase-row button{transition:transform .16s ease,background .2s ease,border-color .2s ease,box-shadow .2s ease}
+.robux-slider-markers button:hover:not(:disabled),.robux-purchase-row button:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 13%,transparent)}
+.robux-slider-markers button:active:not(:disabled),.robux-purchase-row button:active:not(:disabled){transform:translateY(0) scale(.98)}
+.robux-purchase-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.robux-purchase-row button{position:relative;overflow:hidden}
+.robux-purchase-row button.primary::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 20%,#ffffff30 50%,transparent 80%);transform:translateX(-110%);transition:transform .45s ease}
+.robux-purchase-row button.primary:hover:not(:disabled)::after{transform:translateX(110%)}
+.robux-buy-arrow,.robux-check-icon{display:inline-block;transition:transform .2s ease}
+.robux-purchase-row button:hover:not(:disabled) .robux-buy-arrow{transform:translate(2px,-2px)}
+.robux-purchase-row button:hover:not(:disabled) .robux-check-icon{transform:rotate(35deg)}
+.robux-check-icon.checking{animation:robux-check-spin .8s linear infinite}
+.robux-purchase-row .select-trigger{min-width:160px;flex:1}
+.support-usd{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.support-usd>details{flex-basis:100%}
+.support-page details>summary{cursor:pointer;font-weight:600;padding:8px 0}
+.support-page details>.stack{padding-top:12px}
+.support-page .support-credit-dev{border:1px dashed var(--line);border-radius:10px;padding:8px 12px}
+.support-credit-dev label{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.support-credit-dev input{width:180px;min-width:0}
+.support-credit-dev .button-row{margin-top:10px}
+.sidebar-bottom[data-credit-preview]>button.support-link:not(.local-role-button){display:none!important}
+@keyframes robux-amount-arrive{from{opacity:.55;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes robux-check-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.robux-support *,.robux-support *::after{animation:none!important;transition:none!important}.robux-support button:hover,.robux-support button:active{transform:none!important}.robux-slider-label input[type=range]::-webkit-slider-thumb{transition:none!important;transform:none!important}}
+@media(forced-colors:active){.robux-tier-track{background:Canvas;border:1px solid CanvasText}.robux-tier-track i{background:Highlight}.robux-slider-label input[type=range]{appearance:auto}.robux-slider-label input[type=range]::-webkit-slider-runnable-track{background:CanvasText}.robux-slider-label input[type=range]::-webkit-slider-thumb{background:Highlight;border-color:Canvas}}
+@media(max-width:760px){.robux-tier-progress{gap:8px;font-size:12px}.robux-purchase-row .select-trigger{flex-basis:100%}.robux-slider-markers button{font-size:10px}.support-credit-dev input{width:100%}}

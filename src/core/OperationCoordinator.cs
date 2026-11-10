@@ -10,11 +10,10 @@ public sealed class OperationCoordinator
     public static string Category(string command) => command switch {
         "launch" or "launch.start" or "accounts.launchBatch" => "launch",
         "performance.activate" or "accounts.optimizationBypass" or "performance.saveProfiles" or "performance.import" or "accounts.organize" or "accounts.order" or "games.remove" or "games.clear" => "preferences",
-        "updates.download" or "updates.connect" or "updates.disconnect" or "updates.prereleases" => "download",
+        "updates.download" or "updates.check" => "download",
         "system.maintenance" or "maintenance.run" or "system.integration" or "integration.set" or "updates.install" or "updates.setup" => "maintenance",
         "instances.list" or "instances.refresh" or "instances.stopLabels" => "discovery",
         "performance.applyControls" or "performance.resetControls" or "performance.recoverControls" or "instances.focus" or "instances.close" or "instances.stopAll" or "instances.cleanup" or "layouts.apply" or "layouts.preview" or "layouts.savePreset" or "presets.save" => "windows",
-        "updates.check" => "download",
         "system.testWorker" or "health.testWorker" => "probe",
         _ when command.StartsWith("settings.") && command is not ("settings.get" or "settings.read") || command is "host.tray" or "host.shortcuts" or "notifications.save" or "shortcuts.save" or "presets.rename" or "presets.delete" or "layouts.renamePreset" or "layouts.deletePreset" or "background.set" or "activity.clear" or "telemetry.set" or "telemetry.clear" or "support.start" or "support.claim" or "support.visibility" or "support.remove" or "support.forgetPending" or "support.importBadge" or "support.importBadgeFile" or "support.import" or "support.export" or "support.importFile" or "support.exportFile" or "accounts.create" or "accounts.credentials.open" or "accounts.connect" or "accounts.remove" or "accounts.rename" => "preferences",
         _ => "read"

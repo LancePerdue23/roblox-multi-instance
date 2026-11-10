@@ -1,13 +1,13 @@
 # Isolated Windows release acceptance
 
-Status: NOT RUN. No disposable Windows account or VM is available. Fixture tests, signatures and embedded payload inspection do not establish installed behavior or game compatibility.
+Status: packaged matrix NOT RUN. For v1.2.0, the owner reports successful development-build testing, has no VM for packaged acceptance, and requests unsigned packages for the next testing stage. No installation is performed by the release checks. Fixture tests, signatures and embedded payload inspection do not establish installed behavior or game compatibility.
 
 Use a disposable Windows VM or an otherwise isolated test machine. Do not use the owner's active account as a substitute. Take a recoverable snapshot and use test accounts with no production credentials. Keep release artifacts and evidence outside the VM before resetting it.
 
 ## Read-only preparation
 
 - Record artifact SHA-256, product version, source revision and whether the checkout was dirty. Record OS version, WebView2 runtime, monitor/DPI configuration and VM snapshot.
-- Run `Test.ps1`, `Test-Shared.ps1`, `Package.ps1` (or the signed release command in publisher-signing.md) and `Test-Distribution.ps1` (with `-RequireSigned` for public release candidates).
+- Run `Test.ps1`, `Test-Shared.ps1`, `Package.ps1` (or the signed release command in publisher-signing.md) and `scripts/testing/Test-Distribution.ps1` (with `-RequireSigned` only for candidates intended to be signed). The owner has chosen unsigned v1.2.0 validation packages.
 - Confirm public UI contains neither local build time nor supporter role tools. Record signature publisher and certificate fingerprint for signed candidates.
 
 ## Manual matrix

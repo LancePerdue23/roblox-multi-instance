@@ -42,6 +42,7 @@ internal static class LaunchStartup
     internal static async Task<InstanceSnapshot> PrepareAsync(IInstanceCollector collector, CancellationToken token)
     {
         var before = await Task.Run(() => collector.Collect(token), token);
+        Log.Write("launch-baseline", Evidence(before));
         if (StaleBackgrounds(before, before, DateTime.UtcNow).Length == 0) return before;
         await Task.Delay(500, token);
         var after = await Task.Run(() => collector.Collect(token), token);
@@ -54,6 +55,11 @@ internal static class LaunchStartup
         }
         return await Task.Run(() => collector.Collect(token), token);
     }
+
+    // Process identity/visibility only: never include window titles, URIs or authentication arguments.
+    internal static string Evidence(InstanceSnapshot snapshot) =>
+        $"available={snapshot.Available};unavailable={snapshot.Unavailable};clients="+
+        string.Join(',',snapshot.Instances.Select(x=>$"{x.Key.Id}@{DateTime.FromFileTimeUtc(x.Key.Created):O}/windows={x.Windows.Length}/visible={x.AnyVisibleWindow}"));
 
     // Preserve the worker's bounded scan through startup gaps. Successful cleanup
     // need not wait for a fixed observation floor; confirmation concerns the

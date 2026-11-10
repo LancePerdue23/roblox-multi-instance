@@ -1,4 +1,4 @@
-param([string]$Dotnet = (Join-Path $PSScriptRoot '..\..\.build\sdk\dotnet.exe'), [switch]$SkipFrontend, [string]$Output = "", [string]$TelemetryEndpoint="", [string]$SupportConfig="", [string]$UpdatePublisherSha256="", [switch]$OmitSymbols)
+param([string]$Dotnet = (Join-Path $PSScriptRoot '..\..\.build\sdk\dotnet.exe'), [switch]$SkipFrontend, [string]$Output = "", [string]$TelemetryEndpoint=(Import-PowerShellDataFile (Join-Path $PSScriptRoot '../../BuildConfig.psd1')).TelemetryEndpoint, [string]$SupportConfig="", [string]$UpdatePublisherSha256="", [switch]$OmitSymbols,[string]$CoreVersion="",[string]$ProductVersion="")
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $taskOutput = if ($Output) { [IO.Path]::GetFullPath($Output) } else { Join-Path $taskRoot '.build\desktop' }
@@ -10,7 +10,8 @@ if (Test-Path -LiteralPath $taskExistingExe) {
 }
 $taskOriginalHome = $env:DOTNET_CLI_HOME
 $taskOriginalPackages = $env:NUGET_PACKAGES
-$taskFeatureProperties=@("-p:TelemetryEndpoint=$TelemetryEndpoint", "-p:UpdatePublisherSha256=$UpdatePublisherSha256")
+$taskFeatureProperties=@("-p:CoreVersion=$CoreVersion","-p:TelemetryEndpoint=$TelemetryEndpoint", "-p:UpdatePublisherSha256=$UpdatePublisherSha256")
+if($ProductVersion){$taskFeatureProperties+="-p:Version=$ProductVersion"}
 if($OmitSymbols){$taskFeatureProperties+=@('-p:DebugType=none','-p:DebugSymbols=false',"-p:PathMap=$taskRoot=/_/")}
 if($SupportConfig){$taskFeatureProperties+="-p:SupportConfigPath=$([IO.Path]::GetFullPath($SupportConfig))"}
 try {
@@ -27,6 +28,8 @@ try {
     if (!$Output -and (Test-Path -LiteralPath $taskLocalFrontend)) {
         & $taskLocalFrontend
     }
+    $taskLocalSupporterTools=(!$Output -and (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'web/dist/local-supporter-preview.json')))
+    $taskFeatureProperties+="-p:LocalSupporterTools=$($taskLocalSupporterTools.ToString().ToLowerInvariant())"
     & $Dotnet publish (Join-Path $PSScriptRoot 'host\RobloxMultiInstance.csproj') -c Release -r win-x64 --self-contained true -m:1 -p:NuGetAudit=false -p:UseSharedCompilation=false -p:BuildInParallel=false --disable-build-servers -o $taskOutput @taskFeatureProperties
     if ($LASTEXITCODE) { throw 'Desktop publish failed.' }
     if(!$SupportConfig -and (Test-Path -LiteralPath (Join-Path $taskOutput 'support-config.json'))){Remove-Item -LiteralPath (Join-Path $taskOutput 'support-config.json')}

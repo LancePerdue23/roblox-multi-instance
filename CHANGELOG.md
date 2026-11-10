@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+## 1.2.0 — unsigned validation prerelease
+
+- Include the current account launch, background-client cleanup, startup/focus, tray and shortcut improvements, with fixed provider status codes and cleanup-failure recovery.
+- Ship redesigned supporter and recognition cosmetics, cumulative Robux pass credit, bounded resumable purchase verification, and cumulative USD checkout/receipt support. Stripe remains unavailable without a separately configured and validated service.
+- Connect opt-in technical error reporting to the owner's Cloudflare endpoint; preserve default-off consent, allowlisted counters and opt-out queue removal.
+- Use anonymous public stable update discovery, remove the old private update credential flow, and support a single release containing both installer options and the portable package.
+- Include the MIT license and new packaging checks. Publish unsigned for package testing; installed upgrade/uninstall and live update acceptance remain pending. Development-build testing was reported by the owner.
+- Group secondary checks and historical runners under scripts, branding under docs/assets, and GitHub policies under .github. Update their callers and documentation while retaining the main root commands.
+- Prepare automatic stable Release and all-asset Downloads badges, retaining the existing public-event workflow and private snapshots.
+- Clarify current manual prerelease installation, future anonymous stable updates, and retained helper links for app-only releases.
+- Add the MIT license, GitHub private security reporting guidance, bug/feature forms and Windows build/fixture CI.
+- Record repository history and published-asset review before any visibility change. Existing published binaries are unchanged.
+
 ## 1.1.2 — private validation prereleases
 
 - Tolerate transient WebView2 files/directories disappearing during temporary profile cleanup, preventing missing DIPS-wal errors from aborting badge claims for already-saved accounts.

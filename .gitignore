@@ -64,6 +64,8 @@ Desktop.ini
 **/test-results/
 **/playwright-report/
 **/*.tsbuildinfo
+**/__pycache__/
+*.pyc
 
 # Private account-bound recognition deliveries
 *.rmibadge

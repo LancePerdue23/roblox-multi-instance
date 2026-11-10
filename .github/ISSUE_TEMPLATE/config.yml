@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/LancePerdue23/roblox-multi-instance/blob/main/.github/SECURITY.md
+    about: Check the security policy for GitHub private reporting availability; never disclose vulnerabilities in public issues.

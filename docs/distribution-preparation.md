@@ -2,13 +2,11 @@
 
 Performance now has explicit global live presets, persistent account exemptions, and a background policy coordinator. FPS and graphics requests remain gated; fixture transaction tests do not establish live Roblox behavior or RAM savings. See [performance implementation and acceptance](performance-optimizations.md) before enabling launch-time settings.
 
-The desktop and helper editions have installers published as separate private validation prereleases. Live Windows acceptance and stable production release remain pending.
-
-The 1.1.0 release round uses `v1.1.0` for App + Helper and `helper-v1.1.0` for Helper only, both private validation prereleases with product version 1.1.0. See [release notes](releases/v1.1.0.md). The owner confirmed focused live checks and authorized commit/push/publication for the private tester. Broader isolated Windows acceptance and stable promotion remain separate. Repository collaborators download manually; this does not make private prereleases discoverable by the stable-only updater. Keep the repository private.
+The v1.2.0 candidate includes all current development features in unsigned App + Helper, Helper only and portable packages under one release tag. The owner reported development-build testing and chose unsigned distribution; packaged installation/update acceptance remains pending because no isolated Windows environment is available. It is a manual-download validation prerelease; public stable release discovery does not offer prereleases. Historical v1.1.2/helper-v1.1.2 assets remain unchanged. The repository remains private; see [public-release readiness](public-release-readiness.md) before any visibility change.
 
 ## Build and verify
 
-Use the local .NET 10 SDK on Windows x64. Run root `Test.ps1`, `Test-Shared.ps1`, `Package.ps1`, and `Test-Distribution.ps1`. Package builds use fresh staging beneath .build/distribution. They produce these ignored local outputs under artifacts:
+Use the local .NET 10 SDK on Windows x64. Run root `Test.ps1`, `Test-Shared.ps1`, `Package.ps1`, and `scripts/testing/Test-Distribution.ps1`. Package builds use fresh staging beneath .build/distribution. They produce these ignored local outputs under artifacts:
 
 - RobloxMultiInstance-Setup.exe: desktop, matching helper, and rmi terminal commands.
 - RobloxLaunchHelper-Setup.exe: helper and rmi, excluding desktop assets and presentation components.
@@ -22,7 +20,7 @@ Test-Distribution only inspects embedded payloads and checks package hashes; it 
 
 Graphical desktop setup installs the app and helper together. Browser Play integration is a checked, visible choice for fresh installations. Upgrades retain the existing preference, settings, launch history, and original protocol backups. Ordinary app startup never installs or elevates automatically. Portable builds offer explicit setup through System → Health.
 
-Edition/version/protocol/owner metadata and installed payload manifests are protected beside the existing per-Windows-account helper installation. A helper without this metadata is legacy and requires an explicit upgrade. Switching modern editions requires uninstall first. Product versions and helper protocol must match; metadata and executables are verified before installation. Generated protected rollback copies are retained for recovery.
+Edition/version/protocol/owner metadata and installed payload manifests are protected beside the existing per-Windows-account helper installation. A helper without this metadata is legacy and requires an explicit upgrade. Switching modern editions requires uninstall first. Edition versions, explicit helper-version compatibility and helper protocol must validate; metadata and executables are verified before installation. Generated protected rollback copies are retained for recovery.
 
 The helper entrypoint retains browser URI, worker, verification, and administrative compatibility modes. It no longer opens the retired workspace. Helper-only browser launches are windowless and on demand; they do not start notification hosts, tray mode, automatic update notices, hotkeys, or resident cleanup. Desktop notification presentation is a separate assembly. Desktop-edition launches may request a once-per-boot update check; downloads and installation remain explicit.
 
@@ -54,7 +52,7 @@ Publisher-authenticated update signing and the manual Windows acceptance matrix 
 
 ## November 5 signing and profile follow-up
 
-Publisher signing support and compiled signer pin checks are implemented; see [publisher-signing.md](publisher-signing.md). Unsigned private validation packaging remains available, while `Package.ps1 -Release` requires a real signing identity. `Test-Distribution.ps1 -RequireSigned` refuses unsigned validation artifacts. No signing identity exists yet, so this is not a signed or production-accepted release.
+Publisher signing support and compiled signer pin checks are implemented; see [publisher-signing.md](publisher-signing.md). Unsigned validation packaging remains available, while `Package.ps1 -Release` requires a real signing identity. `scripts/testing/Test-Distribution.ps1 -RequireSigned` refuses unsigned validation artifacts. No signing identity exists yet, so this is not a signed or production-accepted release.
 
 Saved profiles now include optional EcoQoS (older files default to unchanged), with explicit apply through the existing process confirmation/reset path. CPU priority and EcoQoS requests are applied only where supported. FPS/graphics requests remain unapplied until a client integration has been verified.
 
@@ -67,8 +65,26 @@ Publisher signing remains optional for repository-trusted validation builds. The
 
 ## November 8 diagnostic and recognition release
 
-v1.1.1 and helper-v1.1.1 remain unsigned private validation prereleases. Setup phase diagnostics and authenticated private-update access are described in [release notes](releases/v1.1.1.md) and [private update setup](private-updates.md). Recognition artwork ships; unfinished supporter artwork and cumulative-payment changes remain excluded. Automated/package checks do not close the outstanding Windows acceptance matrix or establish the original tester failure is fixed.
+Historical v1.1.1 and helper-v1.1.1 packages are unsigned validation prereleases. Setup phase diagnostics are described in [release notes](releases/v1.1.1.md). Current updates use anonymous public stable releases. Recognition artwork ships; unfinished supporter artwork and cumulative-payment changes remain excluded. Automated/package checks do not close the outstanding Windows acceptance matrix or establish the original tester failure is fixed.
 
 ## November 9 profile-cleanup release
 
 v1.1.2/helper-v1.1.2 fix transient profile cleanup during existing-account badge claims. The tester confirmed the prior installer hotfix works. Badge claim confirmation and broader Windows acceptance remain pending; see [release notes](releases/v1.1.2.md). Unfinished supporter changes remain excluded.
+
+## Next release: one release per version
+
+Owner decision (November 9): starting with the next release, publish one `vX.Y.Z` GitHub release containing both installer options, rather than separate desktop and `helper-vX.Y.Z` releases. Leave historical releases intact. The packaging and updater rules are implemented below; publication remains a separate owner action.
+
+- Include `RobloxMultiInstance-Setup.exe` (App + Helper, recommended), `RobloxLaunchHelper-Setup.exe` (Helper only), the portable ZIP, and matching checksums in the same release.
+- Give the README clearly labeled download links pointing to existing applicable assets. After a stable release exists, the desktop can use releases/latest/download/RobloxMultiInstance-Setup.exe. Keep the helper link pinned if the latest release omits its installer.
+- Publish a combined `assets.json` covering both editions and the portable package, with consistent checksum manifests.
+- Verify the updater selects the matching installer for each installed edition from the shared `vX.Y.Z` tag. Retain compatibility with historical helper tags where needed, and test both edition update paths before publication.
+- Keep machine-local supporter tools and private recognition deliveries excluded. Release badges refresh on release changes or manual dispatch; the public event switches both to live Shields.io badges. Downloads counts all uploaded release assets, including verification files. The package-only reporting script remains a separate metric.
+- Owner follow-up: do not build or publish a new helper-only package when the helper itself has not changed. Assess its shared runtime dependencies, installation behavior, and protocol compatibility as part of that decision; a desktop-only change does not automatically require a helper release. Keep the README helper download pointing to the latest applicable existing package when no new helper package is needed.
+- App-only releases use an explicit helper-version contract and a verified prior helper payload. Shared core/runtime conflicts fail packaging; omitting a helper installer alone does not establish compatibility. Desktop comparisons use the edition version, while helper and shared-core checks use the retained helper version.
+
+## Anonymous updates and app-only packaging implemented
+
+Private-token setup and prerelease opt-in have been removed. Current updates discover only public stable releases anonymously; historical private validation builds still require manual downloads. This does not authorize making the repository public or publishing artifacts.
+
+The single-release layout and explicit `HelperVersion` manifest contract are implemented. App-only packaging can retain an existing helper payload and CLI when their shared core/runtime bytes remain compatible; otherwise packaging fails and a changed helper is required. See [update validation](update-checker-validation.md) for `-ExistingHelperPayload`, `scripts/testing/Test-Distribution.ps1 -AppOnly`, migration scope, release selection, and pending Windows acceptance. Keep older helper download links when a release omits a new helper installer.

@@ -83,7 +83,7 @@ public sealed partial class DesktopBackend : IDesktopBackend
     static bool Bool(JsonElement p,string key) => p.TryGetProperty(key,out var v) && v.ValueKind == JsonValueKind.True;
     static void Confirm(JsonElement p) { if(!Bool(p,"confirmed")) throw new DesktopOperationException("STATE_CHANGED","Confirm this action before continuing."); }
     static string VersionLabel() => File.Exists(LegacyProgram.InstalledExe) ? FileVersionInfo.GetVersionInfo(LegacyProgram.InstalledExe).FileVersion ?? "unknown" : "not installed";
-    void RequireHelper() { if(!File.Exists(LegacyProgram.InstalledExe)||File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))) throw new DesktopOperationException("STATE_CHANGED","Set up the matching helper using System → Set up helper.");var metadata=Distribution.Installed();if(metadata is not null&&UpdateVersion.Parse(metadata.Version)!=UpdateVersion.Parse(typeof(DesktopBackend).Assembly.GetName().Version?.ToString()))throw new DesktopOperationException("STATE_CHANGED","The app and helper versions differ. Run the matching desktop setup."); }
+    void RequireHelper() { if(!File.Exists(LegacyProgram.InstalledExe)||File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))) throw new DesktopOperationException("STATE_CHANGED","Set up the matching helper using System → Set up helper.");var metadata=Distribution.Installed();if(metadata is not null&&(!Distribution.Compatible(metadata,VersionLabel())||metadata.Edition!="Desktop"||UpdateVersion.Parse(metadata.Version)!=UpdateVersion.Parse(typeof(DesktopBackend).Assembly.GetName().Version?.ToString())))throw new DesktopOperationException("STATE_CHANGED","The installed app or helper does not match its compatibility metadata. Run desktop setup to repair it."); }
     public async Task<object?> ExecuteAsync(string command, JsonElement payload, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -216,11 +216,8 @@ public sealed partial class DesktopBackend : IDesktopBackend
                 Confirm(p);if(imported)throw new DesktopOperationException("STATE_CHANGED","Preferences were already imported. Your current preview preferences are kept.");
                 var importedLayouts=new LayoutStore().Load();var importedAppearance=new AppearancePreferences();if(!importedAppearance.Available)throw new InvalidDataException("Original appearance settings are unavailable.");
                 Save(importedLayouts);appearance.Save(importedAppearance.Scheme,true);Directory.CreateDirectory(storageRoot);File.WriteAllText(Path.Combine(storageRoot,"imported"),"1");imported=true;return Settings();
-            case "updates.access": return new {connected=UpdateAccess.Connected,prereleases=UpdateAccess.IncludePrereleases};
-            case "updates.prereleases": UpdateAccess.SetPrereleases(Bool(p,"enabled"));release=null;downloaded?.Dispose();downloaded=null;return new {connected=UpdateAccess.Connected,prereleases=UpdateAccess.IncludePrereleases};
-            case "updates.disconnect": UpdateAccess.Disconnect();release=null;downloaded?.Dispose();downloaded=null;return new {connected=false,prereleases=UpdateAccess.IncludePrereleases};
             case "updates.check":
-                using(var limit=CancellationTokenSource.CreateLinkedTokenSource(token)) { limit.CancelAfter(TimeSpan.FromSeconds(30));try { release=await new GitHubReleaseSource(http).LatestAsync(limit.Token); } catch(UserError error) { release=null;throw new DesktopOperationException("UPDATE_ACCESS",error.Message); } }
+                using(var limit=CancellationTokenSource.CreateLinkedTokenSource(token)) { limit.CancelAfter(TimeSpan.FromSeconds(30));try { downloaded?.Dispose();downloaded=null;release=null;release=await new GitHubReleaseSource(http).LatestAsync(limit.Token); } catch(UserError error) { release=null;throw new DesktopOperationException("UPDATE_UNAVAILABLE",error.Message); } }
                 if(release is not null&&Distribution.Installed() is null)release=release with {Asset=null,DownloadProblem="This legacy installation needs an explicit setup upgrade. Open the release page and choose the desktop or helper edition."};
                 return UpdateState();
             case "updates.openPage":
@@ -301,14 +298,23 @@ public sealed partial class DesktopBackend : IDesktopBackend
         return result;
     }
     void RequirePlan(JsonElement p) { if(plan is null||Text(p,"planId")!=planId||!plan.Valid)throw new DesktopOperationException("STATE_CHANGED","Create a valid layout preview first."); }
-    void Save(LayoutSettings next) { if(!settingsAvailable)throw new DesktopOperationException("STATE_CHANGED","Preview layout settings are unavailable. Reset them explicitly in Settings before saving."); store.Save(next);settings=next;Event?.Invoke("settings","changed",Settings()); }
+    static void ValidateShortcuts(Dictionary<string,int> bindings)
+    {
+        if (bindings is null || bindings.Count != LayoutSettings.Default.Shortcuts.Count || bindings.Keys.Any(k => !LayoutSettings.Default.Shortcuts.ContainsKey(k)))
+            throw new DesktopOperationException("INVALID_SHORTCUT", "Provide one shortcut for each command.");
+        foreach (var (command, keys) in bindings)
+            if (!ShortcutPolicy.Valid(keys)) throw new DesktopOperationException("INVALID_SHORTCUT", $"{command}: use Ctrl, Alt or Shift with a letter, digit or F1–F11. Windows-key shortcuts are not supported.");
+        var duplicate = bindings.GroupBy(b => b.Value).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is not null) throw new DesktopOperationException("DUPLICATE_SHORTCUT", $"{string.Join(" and ", duplicate.Select(b => b.Key))} use the same shortcut. Choose a different combination for each command.");
+    }
+    void Save(LayoutSettings next) { if(!settingsAvailable)throw new DesktopOperationException("STATE_CHANGED","Preview layout settings are unavailable. Reset them explicitly in Settings before saving."); ValidateShortcuts(next.Shortcuts); store.Save(next);settings=next;Event?.Invoke("settings","changed",Settings()); }
     object Settings() { notifications.Reload();return new SettingsDto(appearance.Scheme.ToString(),settingsAvailable&&appearance.Available,settings.Shortcuts,new(notifications.Settings.Progress,notifications.Settings.Completion,notifications.Available),imported); }
     object Activity(){bool available=history.Read(out var records);return new ActivityDto(available,records.Select(r=>new ActivityRowDto(r.AttemptId,r.StartedUtc,r.EndedUtc,r.DurationMs,r.Source.ToString(),r.Outcome.ToString(),r.Code.ToString(),DiagnosticMessages.Text(r.Code))).ToArray());}
     void InvalidateProbe(){if(probeFingerprint!=HelperReadiness.Fingerprint())worker=DiagnosticChecks.NotTested;}
     async Task<string> ReadinessAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending")));}
     async Task<object> HealthAsync(CancellationToken token){InvalidateProbe();var h=await Task.Run(()=>DiagnosticChecks.Collect(worker),token);return new HealthDto(h.Overall.ToString(),VersionLabel(),h.BrowserIntegrationEnabled,h.Checks.Append(worker).Select(c=>new CheckDto(c.Id,c.Id,c.State.ToString(),c.Code.ToString(),DiagnosticMessages.Text(c.Code),c.Action.ToString())).ToArray(),HelperReadiness.Evaluate(h,worker,File.Exists(LegacyProgram.InstalledExe)&&!File.Exists(Path.Combine(LegacyProgram.InstallDirectory,"uninstall.pending"))));}
-    bool HasNewerUpdate()=>release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed;
-    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&UpdateVersion.Parse(VersionLabel()) is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem,release?.Asset is not null&&HasNewerUpdate(),downloaded is not null,release?.Page.ToString());
+    bool HasNewerUpdate()=>release is not null&&new UpdateVersionProvider().Current() is Version installed&&release.Version>installed;
+    object UpdateState()=>new UpdateDto(VersionLabel(),release is not null&&new UpdateVersionProvider().Current() is Version installed&&release.Version>installed,release?.Version.ToString(),release?.Title,release?.Notes,release?.DownloadProblem,release?.Asset is not null&&HasNewerUpdate(),downloaded is not null,release?.Page.ToString());
     Task<int> RunHelperAsync(string argument,CancellationToken token)=>RunExecutableAsync(LegacyProgram.InstalledExe,argument,token);
     static async Task<int> RunExecutableAsync(string executable,string argument,CancellationToken token){token.ThrowIfCancellationRequested();var start=new ProcessStartInfo(executable){UseShellExecute=true};foreach(var word in argument.Split(' ',StringSplitOptions.RemoveEmptyEntries))start.ArgumentList.Add(word);using var child=Process.Start(start)??throw new DesktopOperationException("OPERATION_FAILED","The helper could not start.");await child.WaitForExitAsync(CancellationToken.None);return child.ExitCode;}
     public void Dispose(){Interlocked.Exchange(ref disposed,1);DisposeFeatures();DisposePerformance();labels.Dispose();background?.Dispose();downloadCancellation?.Cancel();downloaded?.Dispose();http.Dispose();}

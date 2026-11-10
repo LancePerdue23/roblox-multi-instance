@@ -119,8 +119,8 @@ Keep M10/M11 in the original roadmap: account utilities, outfits, signup assista
 **Verification and working rules**
 
 - Work only in the active checkout; preserve unrelated edits and archive requirements. No staging, commits, publication or installation is implied by this plan.
-- Run focused fixtures for each behavior; at integration boundaries run Test.ps1 and Build.ps1, plus Test-Shared.ps1 for core/helper changes. Packaging changes require Package.ps1 and Test-Distribution.ps1; these do not install software.
-- Use occasional full milestone Audit.ps1 runs with the documented 15-minute synthetic soak. Short harness runs never substitute for acceptance.
+- Run focused fixtures for each behavior; at integration boundaries run Test.ps1 and Build.ps1, plus Test-Shared.ps1 for core/helper changes. Packaging changes require Package.ps1 and scripts/testing/Test-Distribution.ps1; these do not install software.
+- Use occasional full milestone scripts/testing/Audit.ps1 runs with the documented 15-minute synthetic soak. Short harness runs never substitute for acceptance.
 - Use the checkpoint procedure in milestone-audit.md for owner-controlled live work. Keep fixture testing isolated from real games, accounts and protocol ownership.
 - Before each package, record dependencies, exact scope, changed contracts, fixture acceptance, live gates and rollback behavior. End with evidence and unresolved limitations, not a blanket parity claim.
 

@@ -3,6 +3,7 @@ using System.Text.Json;
 
 int count = 0;
 void Check(bool condition) { if (!condition) throw new Exception("Bridge check failed."); count++; }
+foreach(string command in new[]{"updates.access","updates.connect","updates.disconnect","updates.prereleases"})Check(!BridgeProtocol.IsAllowedCommand(command));
 Check(BridgeProtocol.IsAllowedCommand("support.importBadge"));Check(BridgeProtocol.IsAllowedCommand("support.badges"));Check(!BridgeProtocol.IsAllowedCommand("support.importBadgeFile"));
 var signInChecks=new AccountSignInChecks();
 Check(signInChecks.Begin(0));Check(!signInChecks.Begin(100));

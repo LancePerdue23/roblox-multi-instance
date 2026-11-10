@@ -188,9 +188,9 @@ test('reporting is visibly optional and changing it never sends a report',async(
 test('support stays optional and disabled until configured without starting checkout',async({page})=>{
  await page.getByRole('button',{name:'Support development',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Support development'})).toBeVisible();await expect(page.getByRole('button',{name:'Support with USD…'})).toBeDisabled();
- await expect(page.getByRole('button',{name:'Support with Robux…'})).toBeDisabled();
- await expect(page.getByText('Robux donations are coming soon while we set up our group gamepass.')).toBeVisible();
- await expect(page.getByText('Contributions are optional and never unlock features.',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Buy pass'})).toBeDisabled();
+ await expect(page.getByText('Robux support is unavailable in this build.')).toBeVisible();
+ await expect(page.getByText('Optional support. Every feature stays free.',{exact:false})).toBeVisible();
  expect(await page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(c=>['support.start','support.claim','support.roblox'].includes(c.command)))).toHaveLength(0);
  await page.screenshot({path:'../../../.build/desktop-ui-results/support.png',fullPage:true});
 });
@@ -198,18 +198,18 @@ test('support stays optional and disabled until configured without starting chec
 test('Robux donation is independent of Stripe and never claims a supporter badge',async({page})=>{
  await page.goto('/?roblox-ready');await page.getByRole('button',{name:'Support development',exact:true}).click();
  await expect(page.getByRole('button',{name:'Support with USD…'})).toBeDisabled();
- await expect(page.getByRole('button',{name:'Support with Robux…'})).toBeEnabled();
- await expect(page.getByText('Own any qualifying donation gamepass',{exact:false})).toBeVisible();
- await page.getByRole('button',{name:'Support with Robux…'}).click();
+ await expect(page.getByRole('button',{name:'Buy pass'})).toBeEnabled();
+ await expect(page.getByText('Verify purchases finds support passes across all your connected accounts and updates your total automatically.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Buy pass'}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='support.roblox').length)).toBe(1);
  expect(await page.evaluate(()=>(window as any).testCalls.filter((c:any)=>['support.start','support.claim'].includes(c.command)))).toHaveLength(0);
  await expect(page.getByLabel('Show my supporter badge')).toBeDisabled();
 });
 
 test('configured Stripe starts only after an explicit click while Robux remains unavailable',async({page})=>{
- await page.goto('/?stripe-ready');await page.getByRole('button',{name:'Support development',exact:true}).click();
+ await page.goto('/?stripe-ready');await page.getByRole('button',{name:'Support development',exact:true}).click();await page.getByText('USD contributions and recovery',{exact:true}).click();
  await expect(page.getByRole('button',{name:'Support with USD…'})).toBeEnabled();
- await expect(page.getByRole('button',{name:'Support with Robux…'})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'Buy pass'})).toBeDisabled();
  expect(await page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='support.start'))).toHaveLength(0);
  await page.getByRole('button',{name:'Support with USD…'}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).testCalls.filter((c:any)=>c.command==='support.start').length)).toBe(1);
@@ -221,8 +221,9 @@ test('verified cosmetic badge can be hidden and removed without changing launch 
  await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});
  await expect(page.getByRole('button',{name:'Launch games',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Support development',exact:true}).click();
+ await page.getByText('Support settings and details',{exact:true}).click();
  await page.getByLabel('Show my supporter badge').uncheck();await expect(page.locator('.sidebar-supporter')).toHaveCount(0);
- await page.getByRole('button',{name:'Remove receipt…'}).click();await expect(page.getByRole('dialog')).toContainText('Export it first');
+ await page.getByText('Stripe receipt backups',{exact:true}).click();await page.getByRole('button',{name:'Remove receipt…'}).click();await expect(page.getByRole('dialog')).toContainText('Export it first');
  expect(await page.evaluate(()=>(window as unknown as {testCalls:{command:string}[]}).testCalls.filter(c=>c.command==='support.remove'))).toHaveLength(0);
  await page.getByRole('button',{name:'Remove supporter receipt',exact:true}).click();await expect(page.getByLabel('Show my supporter badge')).toBeDisabled();
  await expect(page.getByRole('button',{name:'Launch games',exact:true})).toBeEnabled();
@@ -285,8 +286,9 @@ test('groups can be assigned, renamed and removed without removing accounts',asy
 test('a verified gamepass updates the whole app supporter badge without enabling Stripe export',async({page})=>{
  await page.goto('/?roblox-ready&roblox-owned');
  await page.getByRole('button',{name:'Support development',exact:true}).click();
- await page.getByRole('button',{name:'Check purchases',exact:true}).click();
+ await page.getByRole('button',{name:'Verify purchases',exact:true}).click();
  await expect(page.locator('.sidebar-supporter')).toBeVisible();
+ await page.getByRole('button',{name:'Continue',exact:true}).click();await page.getByText('Support settings and details',{exact:true}).click();await page.getByText('Stripe receipt backups',{exact:true}).click();
  await expect(page.getByRole('button',{name:'Export receipt…',exact:true})).toBeDisabled();
  await expect(page.getByRole('button',{name:'Remove receipt…',exact:true})).toBeDisabled();
  await page.locator('.sidebar-bottom').screenshot({path:'../../../.build/supporter-card.png'});

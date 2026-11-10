@@ -4,17 +4,16 @@
 
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
-[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.2)
+[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 [![Downloads](docs/assets/badges/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 ![Windows](docs/assets/badges/windows.svg)
 ![Architecture](docs/assets/badges/architecture.svg)
-![Status](docs/assets/badges/status.svg)
 
-**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.1.2/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/helper-v1.1.2) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+**[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.2.0/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.2.0/RobloxLaunchHelper-Setup.exe) · [Portable ZIP](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.2.0/RobloxMultiInstance-Portable.zip) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 
 </div>
 
-The download badge refreshes only when manually requested during private testing; commits and release publication do not trigger counter updates. It totals installer and portable package downloads across published releases, including prereleases; it counts download requests, not unique users. Removed release assets are no longer included. GitHub image caching can delay the displayed count. Maintainers can also run the Refresh download badge workflow manually. It does not run on a schedule. When the repository becomes public, the workflow automatically switches this to a live Shields.io release-download badge, with no recurring counter commits.
+The Release badge shows the latest stable version; before the first stable release it reports no stable release. Downloads counts **all uploaded release assets** across published releases, including prereleases, installers, portable ZIPs, checksums and manifests. It excludes drafts and GitHub-generated source archives. Counts are requests, including repeats and updater/audit downloads, not unique users or installations; removed assets disappear from the total. While private, badges are snapshots refreshed on release changes or manual workflow runs. When made public, the existing workflow switches both to live Shields.io badges without scheduled counter commits. GitHub/Shields caching can delay updates.
 
 ## Table of contents
 
@@ -30,6 +29,7 @@ The download badge refreshes only when manually requested during private testing
 - [Testing and packaging](#testing-and-packaging)
 - [Data and optional services](#data-and-optional-services)
 - [Further documentation](#further-documentation)
+- [License and reporting](#license-and-reporting)
 
 ## What is Roblox Multi Instance?
 
@@ -53,7 +53,7 @@ The current releases are prereleases. Experimental features and live-game verifi
 | Terminal | Interactive `rmi` menu, direct commands, and structured `--json` results for scripts. |
 | Privacy and support | Optional error reporting, off by default, plus cosmetic supporter receipt support when configured. Features remain free. |
 
-**Testing scope:** the owner completed focused live checks for this private tester release. Wider Windows installation/update and hardware acceptance remains separate. Verify actual accounts and game outcomes before relying on unattended batches. Preview capture is experimental. Saved FPS and graphics preferences do not currently change Roblox clients; performance profiles do not promise RAM savings. CPU priority and EcoQoS behavior depends on Windows support and process permissions.
+**Testing scope:** focused live checks have been completed for the current validation release. Wider Windows installation/update and hardware acceptance remains separate. Verify actual accounts and game outcomes before relying on unattended batches. Preview capture is experimental. Saved FPS and graphics preferences do not currently change Roblox clients; performance profiles do not promise RAM savings. CPU priority and EcoQoS behavior depends on Windows support and process permissions.
 
 ## Getting started
 
@@ -62,19 +62,21 @@ The current releases are prereleases. Experimental features and live-game verifi
 - Windows 10 or Windows 11 on an x64 PC. Windows/GPU compatibility testing is still in progress.
 - Roblox Player installed for the Windows account you will use.
 - Microsoft Edge WebView2 Evergreen Runtime for the graphical desktop.
-- Access to this repository's releases while the repository is private.
 
 Release packages include the .NET runtime. Node.js and the .NET SDK are development requirements, not prerequisites for using the packaged app.
 
 ### 2. Install the recommended edition
 
-1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.1.2).
+1. Open the [App + Helper release](https://github.com/LancePerdue23/roblox-multi-instance/releases/tag/v1.2.0).
 2. Download and run **`RobloxMultiInstance-Setup.exe`**.
+   Published validation packages are unsigned and may show **Unknown publisher**. Obtain them from the linked release and compare SHA-256 checksums; checksums establish integrity, not an independent publisher identity.
 3. Review the browser Play integration option during setup. It is enabled by default on a fresh installation; upgrades retain your preference.
 4. Open Roblox Multi Instance and check **System → Health** for installation or helper issues.
 5. With browser integration enabled, use **Play** on Roblox as usual. Use Instances and Activity to inspect clients and launch outcomes.
 
 The full installer includes the matching helper and CLI. You do not also need the helper-only installer. Ordinary desktop startup does not install the helper automatically.
+
+For **Helper only**, run the linked `RobloxLaunchHelper-Setup.exe` instead, review browser integration during setup, then use browser Play or `rmi` in a new terminal. For **Portable**, extract the entire ZIP to a writable folder and run `RobloxMultiInstance.exe`; use System → Health for explicit helper setup before launching games.
 
 ### 3. Optional: use the terminal
 
@@ -125,7 +127,9 @@ No. Same-edition upgrades are designed to preserve settings, launch history, and
 
 ### How should I update right now?
 
-Download the newer installer for your existing edition from Releases and run it. For private in-app updates, open System → Version & updates, connect GitHub update access using your own personal access token, and enable Include validation prereleases. Browser sign-in alone is not used by the updater. See [private update access](docs/private-updates.md). Older builds need one manual installer download before these controls are available.
+For the v1.2.0 validation prerelease, use the edition links above and run the installer manually. There is no stable release yet, so an in-app check can correctly report no update. For future stable releases, open System → Version & updates to check public stable releases anonymously, review notes, download and verify the installer, then run setup explicitly. Private releases and validation prereleases are not offered. No GitHub token or browser sign-in is required for public stable updates. See [update behavior](docs/update-checker-validation.md).
+
+The v1.2.0 packages include this updater behavior. Historical v1.1.2 binaries predate those changes; do not configure private update access in those builds. Update manually until a newer stable package is available. If an app-only release omits a helper installer, helper-only users keep the latest applicable helper package.
 
 ### Can I use the portable app without installing anything?
 
@@ -200,8 +204,12 @@ tests/                  Shared-service fixtures
 services/
   telemetry/            Optional technical-report ingestion service
   support/              Optional contribution and receipt service
-scripts/                Maintainer utilities, including download counts
+scripts/                Maintainer and download-count utilities
+  testing/              Feature checks, distribution verification, and milestone audit
+  legacy/               Historical build/test runners and archive verification
 docs/                   Design notes, guides, and acceptance checklists
+  assets/branding/      Project logo and app artwork
+.github/                Workflows, issue forms, contribution and security policies
 ```
 
 ## Development
@@ -227,17 +235,17 @@ To use the CLI from the checkout without installation:
 ./Test.ps1
 ./Test-Shared.ps1
 ./Package.ps1
-./Test-Distribution.ps1 -ExpectedVersion 1.1.0.0
+./scripts/testing/Test-Distribution.ps1
 ```
 
 - `Test.ps1`: current desktop/native contracts, frontend checks, browser workflows, and account/support/service fixtures.
 - `Test-Shared.ps1`: shared helper and service regression fixtures; required when changing the installed helper or shared services.
 - `Package.ps1`: fresh staging and both installer editions, portable ZIP, manifests, and checksums under ignored `artifacts/`.
-- `Test-Distribution.ps1`: read-only package hashes, embedded payloads, edition boundaries, and portable contents; does not install or launch Roblox. Pass the version being packaged.
+- `scripts/testing/Test-Distribution.ps1`: read-only package hashes, embedded payloads, edition boundaries, and portable contents; does not install or launch Roblox. Pass the version being packaged.
 
 Some native tests need access to temporary registry keys and ACL fixtures. Live Roblox, installation, upgrade, repair, and uninstall acceptance are separate from fixture tests. See the [Windows acceptance checklist](docs/releases/windows-acceptance.md) and [milestone audit](docs/milestone-audit.md).
 
-The frozen WinForms reference is local under ignored `archive/legacy-winforms` and is not the current app. `VerifyArchive.ps1` checks its hashes when that archive is present. Retired UI tests run only through explicit `Test-ArchivedUI.ps1`; they are excluded from normal desktop verification.
+The historical WinForms reference is local under ignored `archive/legacy-winforms` and is not the current app. `scripts/legacy/VerifyArchive.ps1` checks its hashes when that archive is present. Retired UI tests run only through explicit `scripts/legacy/Test-ArchivedUI.ps1`; they are excluded from normal desktop verification.
 
 ## Data and optional services
 
@@ -245,12 +253,13 @@ Desktop preferences live under `%LOCALAPPDATA%/RobloxMultiInstance`. Missing pre
 
 Account profiles use local storage and protected session handling. Existing WebView2 browser profiles must not be described as a master-password-encrypted vault. See the [account feasibility and acceptance guide](docs/account-launch-feasibility.md) for boundaries.
 
-Telemetry and contribution services require separate owner configuration; repository source alone does not deploy them. Never place credentials or private session data in source control. Public distribution builds exclude machine-local supporter preview tools.
+The optional telemetry receiving endpoint is configured in `BuildConfig.psd1`; reporting still requires user opt-in. Contribution services require separate maintainer configuration, and repository source alone does not deploy hosted services. Never place credentials or private session data in source control. Public distribution builds exclude machine-local supporter preview tools.
 
 ## Further documentation
 
 - [CLI and interactive helper menu](docs/helper-cli.md)
 - [Distribution and installation behavior](docs/distribution-preparation.md)
+- [Public-release readiness review](docs/public-release-readiness.md)
 - [Startup resilience](docs/startup-resilience.md)
 - [Launch startup and recovery](docs/launch-startup-recovery.md)
 - [Performance implementation and limits](docs/performance-optimizations.md)
@@ -260,3 +269,9 @@ Telemetry and contribution services require separate owner configuration; reposi
 - [Telemetry and download counts](docs/telemetry.md)
 - [Supporter service setup](docs/supporter-setup.md)
 - [Changelog](CHANGELOG.md)
+
+## License and reporting
+
+Project code is licensed under [MIT](LICENSE). Dependencies retain their own licenses; Roblox and Microsoft names and marks belong to their owners. This project is not affiliated with Roblox Corporation.
+
+Use the [bug report or feature request forms](https://github.com/LancePerdue23/roblox-multi-instance/issues/new/choose) for ordinary issues. Report vulnerabilities privately through the [security policy](.github/SECURITY.md).

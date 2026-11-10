@@ -385,8 +385,8 @@ During development, run the focused existing suite covering the changed behavior
 - ./Test.ps1 for desktop contracts, backend/host boundaries, frontend build/unit/workflow checks and existing feature/service checks.
 - ./Test-Shared.ps1 whenever canonical shared/core or installed-helper behavior changes.
 - ./Build.ps1 to verify the production desktop after integration.
-- ./Package.ps1 and ./Test-Distribution.ps1 when packaging/updater/setup changes require artifact verification; these are separate from installation.
-- Occasional ./Audit.ps1 milestone persona/stress runs; preserve the documented full soak requirement for an acceptance run.
+- ./Package.ps1 and ./scripts/testing/Test-Distribution.ps1 when packaging/updater/setup changes require artifact verification; these are separate from installation.
+- Occasional ./scripts/testing/Audit.ps1 milestone persona/stress runs; preserve the documented full soak requirement for an acceptance run.
 - Do not use retired UI tests for current desktop work. Keep existing archive preservation requirements.
 
 Add tests for actual failure boundaries and user behavior, not a second copy of implementation logic. Use fake HTTP, fake clocks, isolated storage, controlled native fixture processes/windows, malicious/corrupt inputs and secret canaries. Fixture tests must not launch/stop Roblox, install software, change real protocols or operate on existing games.

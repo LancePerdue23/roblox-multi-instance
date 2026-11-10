@@ -1,12 +1,13 @@
 param([string]$Dotnet = 'dotnet')
+$taskRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $ErrorActionPreference = 'Stop'
-$taskRoot = Join-Path $PSScriptRoot '.build'
+$taskRoot = Join-Path $taskRepositoryRoot '.build'
 $taskDev = Join-Path $taskRoot 'dev'
 $taskBackups = Join-Path $taskRoot 'dev-backups'
 $taskStage = Join-Path $taskRoot 'dev-staging'
 $taskExe = Join-Path $taskDev 'RobloxLaunchHelper.exe'
 # Build first so a compiler/publish failure never disturbs the current development EXE.
-& (Join-Path $PSScriptRoot 'Build-Legacy.ps1') -Dotnet $Dotnet -Output $taskStage
+& (Join-Path $taskRepositoryRoot 'scripts/legacy/Build-Legacy.ps1') -Dotnet $Dotnet -Output $taskStage
 if (Test-Path -LiteralPath $taskExe) {
     # Opening exclusively detects a running EXE before creating a backup or replacing it.
     try { $taskLock = [IO.File]::Open($taskExe, 'Open', 'ReadWrite', 'None'); $taskLock.Dispose() }

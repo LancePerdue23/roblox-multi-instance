@@ -24,6 +24,25 @@ static class GameLaunchTests
         provider=new Pipeline {Ready=false};coordinator=new(provider);
         result=await coordinator.RunAsync(contexts,new("123",null),null,null,default);
         Check(provider.Calls==1&&result.Items[1].Code=="HELPER_READINESS_UNCONFIRMED","Unconfirmed helper stops pending launches without replay");
+        provider=new Pipeline {Canary=true};coordinator=new(provider);
+        var progress=new List<LaunchBatchProgressDto>();
+        for(int batch=0;batch<3;batch++)
+        {
+            result=await coordinator.RunAsync([contexts[0]],new("123",null),null,progress.Add,default);
+            Check(result.Items[0].Code=="ACCOUNT_PROVIDER_RESULT_INVALID"&&!result.CanApplyLayout,"Pipelined unknown code is replaced before page output");
+        }
+        Check(provider.Calls==3&&!JsonSerializer.Serialize(new {result,progress}).Contains("PRIVATE_"),"Repeated batches launch once per slot and exclude secret status, code, stage and server canaries");
+        provider.CanaryOutcome=new("Started","ACCOUNT_IDENTITY_CONFIRMED",1,1,"PRIVATE_SERVER_CANARY");
+        result=await coordinator.RunAsync([contexts[0]],new("123",null),null,progress.Add,default);
+        Check(result.Status=="Completed"&&result.Items[0].ObservedServer is null,"Valid pipeline outcomes cannot export arbitrary observed-server text");
+        provider.CanaryOutcome=new("PRIVATE_STATUS_CANARY","ACCOUNT_IDENTITY_CONFIRMED",1,1);
+        result=await coordinator.RunAsync([contexts[0]],new("123",null),null,progress.Add,default);
+        Check(result.Items[0].Status=="Unknown"&&!JsonSerializer.Serialize(new {result,progress}).Contains("PRIVATE_"),"Provider status and progress are allowlisted independently of result codes");
+        provider=new Pipeline {ThrowFinish=true};coordinator=new(provider);provider.Complete.TrySetResult(new("Started","ACCOUNT_IDENTITY_CONFIRMED",1,1));
+        try { await coordinator.RunAsync([contexts[0]],new("123",null),null,null,default); } catch(IOException) { }
+        provider.ThrowFinish=false;
+        result=await coordinator.RunAsync([contexts[0]],new("123",null),null,null,default).WaitAsync(TimeSpan.FromSeconds(2));
+        Check(provider.Calls==2&&result.Status=="Completed","Failed pipeline disposal releases the batch gate for the next explicit batch");
         provider=new Pipeline {DelayReady=true};coordinator=new(provider);
         using(var cancel=new CancellationTokenSource())
         {
@@ -68,16 +87,19 @@ static class GameLaunchTests
     }
     sealed class Pipeline : IPipelinedAccountSessionProvider
     {
-        public bool Ready=true,Finished,DelayReady;public int Calls;
+        public bool Ready=true,Finished,DelayReady,Canary,ThrowFinish;public int Calls;
+        public AccountLaunchOutcome CanaryOutcome=new("Started","PRIVATE_TICKET_CANARY",1,1,"PRIVATE_RECOVERY_CANARY");
         public TaskCompletionSource Second=new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<AccountLaunchOutcome> Complete=new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool LaunchAvailable=>true;public string Notice=>"fixture";
         public Task Prepare(AccountLaunchContext account,CancellationToken token)=>Task.CompletedTask;
-        public Task Finish(){Finished=true;return Task.CompletedTask;}
+        public Task Finish(){Finished=true;if(ThrowFinish)throw new IOException("PRIVATE_CLEANUP_CANARY");return Task.CompletedTask;}
         public Task<AccountLaunchOutcome> LaunchAsync(AccountLaunchContext account,LaunchTargetDto target,CancellationToken token)=>throw new Exception("Serialized full launch should not be used");
         public PendingAccountLaunch Start(AccountLaunchContext account,LaunchTargetDto target,Action<string,long> progress,CancellationToken token)
         {
-            Calls++;if(!Ready)return new(Task.FromResult(false),Task.FromResult(new AccountLaunchOutcome("Unknown","HELPER_READINESS_UNCONFIRMED")));
+            Calls++;
+            if(Canary){progress("PRIVATE_SESSION_CANARY",0);return new(Task.FromResult(true),Task.FromResult(CanaryOutcome));}
+            if(!Ready)return new(Task.FromResult(false),Task.FromResult(new AccountLaunchOutcome("Unknown","HELPER_READINESS_UNCONFIRMED")));
             if(DelayReady){var ready=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);token.Register(()=>{Complete.TrySetResult(new("Unknown","LAUNCH_OBSERVATION_CANCELED"));ready.TrySetResult(false);});return new(ready.Task,Complete.Task);}
             if(Calls==1)return new(Task.FromResult(true),Complete.Task);
             Second.TrySetResult();return new(Task.FromResult(true),Task.FromResult(new AccountLaunchOutcome("Started","ACCOUNT_IDENTITY_CONFIRMED",2,2)));

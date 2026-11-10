@@ -18,6 +18,7 @@ internal static class Terminal
         report export PATH
         telemetry status|on|off|clear|send [--yes]
         updates check|download|install [--player PATH] [--yes]
+        Updates check public stable releases anonymously; no GitHub sign-in is required.
         Global: --json, --help
         Fresh setup enables browser Play integration unless --disable-integration is given.
         Existing integration preferences are preserved. Specify --player when discovery is ambiguous.
@@ -42,6 +43,7 @@ internal static class Terminal
             if(machine)Console.Out.WriteLine(JsonSerializer.Serialize(data,json));else if(result is not null)output.WriteLine(result.Message);else Console.Out.WriteLine(TerminalMenu.Format(data));
             return result?.ExitCode??0;
         }
+        catch(InvalidDataException) when(args[0]=="updates"){var result=new OperationResult(OperationOutcome.Failed,"UPDATE_VERIFICATION_FAILED","Update metadata or payload verification failed. Check again and download a fresh copy; setup was not started.");(machine?Console.Out:Console.Error).WriteLine(machine?JsonSerializer.Serialize(result,json):result.Message);return 1;}
         catch(ArgumentException ex){if(machine)Console.Out.WriteLine(JsonSerializer.Serialize(new OperationResult(OperationOutcome.Failed,"INVALID_USAGE",ex.Message),json));else Console.Error.WriteLine(ex.Message+" Use rmi --help.");return 2;}
         catch(OperationCanceledException){var result=new OperationResult(OperationOutcome.Canceled,"CANCELED","Operation canceled. Any game already started remains running.");(machine?Console.Out:Console.Error).WriteLine(machine?JsonSerializer.Serialize(result,json):result.Message);return 1223;}
         catch(System.ComponentModel.Win32Exception ex) when(ex.NativeErrorCode==1223){var result=new OperationResult(OperationOutcome.Canceled,"CANCELED","Administrator approval canceled.");(machine?Console.Out:Console.Error).WriteLine(machine?JsonSerializer.Serialize(result,json):result.Message);return 1223;}
@@ -121,7 +123,7 @@ internal static class Terminal
                 {
                     var release=await new GitHubReleaseSource(http).LatestAsync(token);
                     if(release is null)return new OperationResult(OperationOutcome.Succeeded,"NO_RELEASE","No update release is available.");
-                    if(sub=="check")return new { version=release.Version.ToString(),release.Notes,release.DownloadProblem,page=release.Page.ToString() };
+                    if(sub=="check")return new { available=new UpdateVersionProvider().Current() is Version current && release.Version>current,version=release.Version.ToString(),release.Notes,release.DownloadProblem,page=release.Page.ToString() };
                     if(Distribution.Installed() is null)throw new UserError("Upgrade this legacy installation explicitly with setup --installer PATH. Choose the desktop or helper edition from "+release.Page);
                     if(new UpdateVersionProvider().Current() is Version installed&&release.Version<=installed)return new OperationResult(OperationOutcome.Succeeded,"UP_TO_DATE","The installed edition is up to date.");
                     if(release.Asset is null)throw new UserError(release.DownloadProblem+" "+release.Page);

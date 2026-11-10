@@ -185,7 +185,6 @@ dialog.launch-panel{width:620px;max-width:calc(100vw - 32px);max-height:calc(100
 .launch-slot-list{display:flex;flex-direction:column;gap:8px}.launch-slot-list .button-row button{padding:4px 10px}.launch-review{display:grid;grid-template-columns:85px minmax(0,1fr);gap:16px;margin:0}.launch-review dt{color:var(--muted)}.launch-review dd{margin:0;overflow-wrap:anywhere}
 .launch-panel select{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);color:var(--text);background:var(--bg);font:inherit}.launch-panel details label{margin-top:12px}.launch-panel .error-banner button{margin-top:10px}.launch-panel .notice{margin:0}
 @media(max-width:560px){.launch-panel-heading,.launch-panel-body{padding:18px}.launch-choice{flex-wrap:wrap}.launch-repeat{padding:16px}.launch-slot-list .launch-choice{flex-wrap:nowrap}.launch-panel .button-row{flex-wrap:wrap}}
-
 /* Recognition collections stay reachable in shorter windows. */
 .sidebar-development{overflow-y:auto}.sidebar-recognition{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:4px;margin-left:-8px;flex-shrink:0}
 .sidebar-recognition .local-special-button{margin:0!important;min-height:36px;flex-shrink:0}

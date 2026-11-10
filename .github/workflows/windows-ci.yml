@@ -1,0 +1,50 @@
+name: Windows CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/desktop/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Badge regression checks
+        run: python -m unittest discover -s scripts -p "test_release_badges.py"
+      - name: Build desktop
+        shell: pwsh
+        run: ./Build.ps1 -Dotnet (Get-Command dotnet).Source
+      - name: Install browser fixture runtime
+        working-directory: src/desktop/web
+        run: npx playwright install msedge
+      - name: Desktop, frontend and service fixtures
+        shell: pwsh
+        run: ./Test.ps1 -Dotnet (Get-Command dotnet).Source
+      - name: Shared helper fixtures
+        shell: pwsh
+        run: ./Test-Shared.ps1 -Dotnet (Get-Command dotnet).Source
+      - name: Package unsigned validation artifacts
+        shell: pwsh
+        run: ./Package.ps1 -Dotnet (Get-Command dotnet).Source -SkipFrontend
+      - name: Verify distribution without installation
+        shell: pwsh
+        run: ./scripts/testing/Test-Distribution.ps1

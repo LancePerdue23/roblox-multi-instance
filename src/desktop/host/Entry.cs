@@ -13,6 +13,7 @@ internal static class Entry
     [STAThread]
     public static int Main(string[] args)
     {
+        RobloxLaunchHelper.UpdateCredentialMigration.RemoveOwnedCredential();
         int result=Run(args);
         if(result!=72)return result;
         // Run has released the single-instance mutex before launching the replacement.
@@ -26,6 +27,9 @@ internal static class Entry
     static int Run(string[] args)
     {
         if(Array.IndexOf(args,"--launch-notifications")>=0)return RobloxLaunchHelper.LaunchNotificationHost.Run();
+        // Record entry before backend construction/cleanup, without activation links or tickets.
+        using(var current=System.Diagnostics.Process.GetCurrentProcess())
+            RobloxLaunchHelper.Log.Write("desktop-entry", "createdUtc="+current.StartTime.ToUniversalTime().ToString("O"),current.Id);
         string? badgePath;try{badgePath=BadgeActivation.Parse(args);}catch(Exception ex){MessageBox.Show(ex.Message,"Recognition file");return 1;}
         bool updates=Array.IndexOf(args,"--updates")>=0;
         if(Array.IndexOf(args,"--check-updates")>=0)

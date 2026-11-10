@@ -1,3 +1,4 @@
+import {cumulativeRoute,cumulativeEvent,cumulativeClaim} from './cumulative.mjs';
 const product = 'roblox-multi-instance';
 const encoder = new TextEncoder();
 const claimLifetime = 30 * 86400;
@@ -7,7 +8,7 @@ const hex = bytes => [...new Uint8Array(bytes)].map(x => x.toString(16).padStart
 const sha256 = async value => hex(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
 const equal = (a, b) => { if (a.length !== b.length) return false; let diff = 0; for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i); return diff === 0; };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
-const configured = env => env.SUPPORT_DB && env.SUPPORT_RATE && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.STRIPE_PRICE_ID && env.RECEIPT_PRIVATE_JWK && /^[A-Za-z0-9_-]{1,64}$/.test(env.RECEIPT_KEY_ID ?? '') && ['true', 'false'].includes(env.STRIPE_LIVE_MODE);
+const configured = env => env.SUPPORT_DB && env.SUPPORT_RATE && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.RECEIPT_PRIVATE_JWK && /^[A-Za-z0-9_-]{1,64}$/.test(env.RECEIPT_KEY_ID ?? '') && ['true', 'false'].includes(env.STRIPE_LIVE_MODE);
 const exactFields = (body, fields) => body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === fields.length && fields.every(key => Object.hasOwn(body, key));
 
 async function boundedBody(request, maximum) {
@@ -46,7 +47,7 @@ export function createHandler({ fetch: fetcher = globalThis.fetch, now = () => M
     const url = new URL(request.url);
     if (url.pathname === '/support/thanks' && request.method === 'GET') return new Response('Thank you. Return to Roblox Multi Instance and choose Check payment to receive your optional supporter badge. All features remain free.', { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
     if (url.pathname === '/support/cancel' && request.method === 'GET') return new Response('Checkout closed without confirming payment. Return to Roblox Multi Instance to resume checkout or check payment status if you already paid. All features remain free.', { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
-    if (request.method !== 'POST' || !['/support/start', '/support/claim', '/support/webhook'].includes(url.pathname)) return json({ error: 'not_found' }, 404);
+    if (request.method !== 'POST' || !['/support/start', '/support/claim', '/support/webhook', '/support/start-v2', '/support/wallet'].includes(url.pathname)) return json({ error: 'not_found' }, 404);
     if (!configured(env)) return json({ error: 'unconfigured' }, 503);
     try {
       if (url.pathname === '/support/webhook') {
@@ -54,6 +55,7 @@ export function createHandler({ fetch: fetcher = globalThis.fetch, now = () => M
         if (!await verifyStripeSignature(raw, request.headers.get('stripe-signature'), env.STRIPE_WEBHOOK_SECRET, now())) return json({ error: 'signature' }, 400);
         const event = JSON.parse(raw);
         if (event.livemode !== (env.STRIPE_LIVE_MODE === 'true')) return json({ error: 'mode' }, 400);
+        if (await cumulativeEvent(event,env)) return json({received:true});
         if (!['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)) return json({ received: true });
         const session = event.data?.object;
         if (!session || session.object !== 'checkout.session' || session.mode !== 'payment' || session.livemode !== (env.STRIPE_LIVE_MODE === 'true') || session.metadata?.supportProduct !== product) return json({ error: 'session' }, 400);
@@ -68,7 +70,9 @@ export function createHandler({ fetch: fetcher = globalThis.fetch, now = () => M
       if (!(await env.SUPPORT_RATE.limit({ key: url.pathname })).success) return json({ error: 'rate_limit' }, 429);
       let body;
       try { body = JSON.parse(await boundedBody(request, 2048)); } catch { return json({ error: 'request' }, 400); }
+      if (['/support/start-v2','/support/wallet'].includes(url.pathname)) return await cumulativeRoute(url.pathname,body,env,fetcher,now(),url.origin,boundedBody);
       if (url.pathname === '/support/start') {
+        if(!env.STRIPE_PRICE_ID)return json({error:'unconfigured'},503);
         if (!exactFields(body, ['claimHash']) || typeof body.claimHash !== 'string' || !/^[0-9a-f]{64}$/.test(body.claimHash)) return json({ error: 'request' }, 400);
         let attempt = await env.SUPPORT_DB.prepare('SELECT * FROM support_attempts WHERE claim_hash=?').bind(body.claimHash).first();
         if (!attempt) {
@@ -90,6 +94,7 @@ export function createHandler({ fetch: fetcher = globalThis.fetch, now = () => M
         return json({ attemptId, checkoutUrl: checkout.href });
       }
       if (!exactFields(body, ['attemptId', 'secret']) || typeof body.attemptId !== 'string' || typeof body.secret !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(body.attemptId) || !/^[A-Za-z0-9_-]{43}$/.test(body.secret)) return json({ error: 'request' }, 400);
+      const cumulative = await cumulativeClaim(body,env,now()); if(cumulative)return cumulative;
       const attempt = await env.SUPPORT_DB.prepare('SELECT claim_hash,status,expires_at FROM support_attempts WHERE attempt_id=?').bind(body.attemptId).first();
       if (!attempt || !equal(attempt.claim_hash, await sha256(body.secret)) || attempt.expires_at <= now()) return json({ error: 'claim' }, 404);
       if (attempt.status !== 'paid') return json({ status: 'pending' });

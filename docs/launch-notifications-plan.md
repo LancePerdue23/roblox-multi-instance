@@ -1,4 +1,4 @@
-> Historical feature validation notes. Current desktop testing uses root Test.ps1 and Audit.ps1; shared/helper checks use Test-Shared.ps1 (including -Integration when explicitly required). Retired UI instructions below are historical. See [milestone audit](milestone-audit.md).
+> Historical feature validation notes. Current desktop testing uses root Test.ps1 and scripts/testing/Audit.ps1; shared/helper checks use Test-Shared.ps1 (including -Integration when explicitly required). Retired UI instructions below are historical. See [milestone audit](milestone-audit.md).
 
 # Optional launch notifications plan
 

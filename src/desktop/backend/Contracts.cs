@@ -26,7 +26,7 @@ public sealed record ActivityRowDto(Guid Id,DateTimeOffset StartedUtc,DateTimeOf
 public sealed record ActivityDto(bool Available,ActivityRowDto[] Records);
 public sealed record UpdateDto(string HelperVersion,bool Available,string? Version,string? Title,string? Notes,string? DownloadProblem,bool CanDownload,bool Downloaded,string? ReleasePage=null);
 public sealed record TelemetryDto(bool Enabled,bool Available,bool Configured,int QueuedErrors,string? LastResult);
-public sealed record SupportDto(bool Configured,bool Supported,bool ShowBadge,bool Pending,string Message,bool RobloxConfigured,bool ReceiptAvailable=false);
+public sealed record SupportDto(bool Configured,bool Supported,bool ShowBadge,bool Pending,string Message,bool RobloxConfigured,bool ReceiptAvailable=false,int VerifiedTier=-1,long TotalCents=0,bool RecoveryAvailable=false,long TotalRobux=0,int RobloxTier=-1,int UsdTier=-1,RobloxSupportPass[]? RobloxPasses=null);
 public sealed record AccountBatchDto(LaunchBatchResultDto Batch,string LayoutStatus);
 
 public sealed record PerformanceProcessDto(string Id,int Pid,DateTime StartedAt,double? CpuPercent,ulong? WorkingSetBytes,ulong? PrivateWorkingSetBytes,ulong? PrivateCommitBytes,double? ReadBytesPerSecond,double? WriteBytesPerSecond,double UptimeSeconds,string Status);
@@ -47,7 +47,7 @@ public static class BackendContractEmitter
     {
         var text=new StringBuilder("// Generated from src/desktop/backend/Contracts.cs. Do not edit.\n");
         var context=new NullabilityInfoContext();
-        foreach(var type in typeof(BackendContractEmitter).Assembly.GetTypes().Where(t=>t.Namespace==typeof(BackendContractEmitter).Namespace&&t.Name.EndsWith("Dto")).OrderBy(t=>t.Name,StringComparer.Ordinal))
+        foreach(var type in typeof(BackendContractEmitter).Assembly.GetTypes().Where(t=>t.Namespace==typeof(BackendContractEmitter).Namespace&&(t.Name.EndsWith("Dto")||t==typeof(RobloxSupportPass))).OrderBy(t=>t.Name,StringComparer.Ordinal))
         {
             text.Append("export interface ").Append(type.Name).Append(" {\n");
             foreach(var property in type.GetProperties(BindingFlags.Public|BindingFlags.Instance))

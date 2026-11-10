@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible application or installation problem.
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, see .github/SECURITY.md for private reporting availability. Remove cookies, passwords, tokens, account IDs and private paths from anything you share."
+  - type: input
+    id: version
+    attributes:
+      label: Version and edition
+      placeholder: "1.1.2, App + Helper / Helper only / portable"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics or screenshots (optional)
+      description: Review exports before sharing. Never attach account/browser profiles or raw Roblox logs.

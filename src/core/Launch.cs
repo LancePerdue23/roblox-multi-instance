@@ -196,6 +196,7 @@ internal static class Launch
             ServicePresentation.AutomaticUpdate?.Invoke();
             attempt.SetFallback(LaunchOutcome.Warning, DiagnosticCode.CompletionUnconfirmed);
             Log.Write("roblox-launched", "", game.Id);
+            Log.Write("roblox-launch-origin", $"parent={Environment.ProcessId};executable={start.FileName};mode={(playerArguments is not null ? "account" : uri is null ? "desktop" : "uri")}",game.Id);
             async Task<string> WorkerResultAsync()
             {
                 if (pipe is null) return "UNAVAILABLE";

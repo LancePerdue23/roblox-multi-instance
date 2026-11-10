@@ -99,12 +99,13 @@ internal static class Entry
         using var parent=Process.GetProcessById(pid);
         var id=Native.GetIdentity(pid);string[] allowed=[HelperProgram.InstalledExe,Path.Combine(HelperProgram.InstallDirectory,"RobloxMultiInstance.exe"),Path.Combine(HelperProgram.InstallDirectory,"rmi.exe")];
         if(parent.StartTime.ToUniversalTime().Ticks!=created||id.Sid!=HelperProgram.Sid||id.Elevated||id.Session!=Process.GetCurrentProcess().SessionId||!allowed.Contains(id.Image,StringComparer.OrdinalIgnoreCase))return 2;
-        using(var file=File.OpenRead(Environment.ProcessPath!)){if(file.Length!=size||!Convert.ToHexString(SHA256.HashData(file)).Equals(args[5],StringComparison.OrdinalIgnoreCase))return 2;}
-        UpdatePublisherTrust.Verify(Environment.ProcessPath!);
+        using var handoffFile=File.OpenRead(Environment.ProcessPath!);
+        if(handoffFile.Length!=size||!Convert.ToHexString(SHA256.HashData(handoffFile)).Equals(args[5],StringComparison.OrdinalIgnoreCase))return 2;
+        UpdatePublisherTrust.VerifyIfConfigured(Environment.ProcessPath!);
         using(var payload=OpenPayload())using(var zip=new ZipArchive(payload,ZipArchiveMode.Read)){var manifest=ReadManifest(zip);Distribution.Validate(manifest);if(UpdateVersion.Parse(manifest.Version)!=version||Distribution.Installed()?.Edition!=manifest.Edition)return 2;}
         using(var ready=EventWaitHandle.OpenExisting(UpdateSetupHandoff.ReadyName(pid,created)))ready.Set();
         if(!parent.WaitForExit(30000))throw new UserError("The previous app has not closed. Close it and retry setup.");
-        UpdatePublisherTrust.Verify(Environment.ProcessPath!);
+        UpdatePublisherTrust.VerifyIfConfigured(Environment.ProcessPath!);
         UpdateShutdownRequest.CloseManagers();
         var options=args.Skip(6).ToArray();
         if(options.Contains("--silent"))return Elevate(options);
