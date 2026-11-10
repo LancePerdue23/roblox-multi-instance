@@ -40,11 +40,12 @@ internal static class UpdateTests
     private static void Async(Func<Task> task) => Task.Run(task).GetAwaiter().GetResult();
     internal static void Run(Action<string, Action> run)
     {
-        run("Update credential migration deletes only the exact owned generic target and tolerates absence",()=>
+        run("Update credential migration targets only its owned entry, respects elevation and tolerates absence",()=>
         {
+            Check(UpdateCredentialMigration.Target=="RobloxMultiInstance/GitHubUpdates/"+UpdateUrls.Repository);
             int calls=0;
             foreach(int result in new[]{0,1168,5}) UpdateCredentialMigration.RemoveOwnedCredential((target,type,flags)=>{Check(target=="RobloxMultiInstance/GitHubUpdates/"+UpdateUrls.Repository&&type==1&&flags==0);calls++;return result;});
-            Check(calls==3);
+            Check(calls==(Program.Elevated?0:3));
         });
         run("Public discovery is anonymous and excludes drafts and prereleases",()=>Async(async()=>
         {
