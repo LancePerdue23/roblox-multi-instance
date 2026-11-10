@@ -28,7 +28,9 @@ test('editing a repeat is harmless until confirmed and does not overwrite the Pl
  await page.getByRole('button',{name:'Launch games',exact:true}).click();const panel=page.getByRole('dialog');
  await panel.getByRole('button',{name:'Edit setup',exact:true}).click();await expect(panel.getByLabel('Game URL or Place ID',{exact:true})).toHaveValue('123456');
  await panel.getByRole('button',{name:'Move launch account 2 up',exact:true}).click();await expect(panel).toContainText('Slot 1: First account');
- await panel.getByRole('button',{name:'Review launch →',exact:true}).click();await page.keyboard.press('Escape');
+ await panel.getByRole('button',{name:'Review launch →',exact:true}).click();
+ await expect(panel.getByRole('heading',{name:'Ready to launch?',exact:true})).toBeVisible();
+ await page.keyboard.press('Escape');await expect(panel).not.toBeVisible();
  expect(await launches(page)).toHaveLength(0);await expect(page.getByLabel('Game URL or Place ID',{exact:true})).toHaveValue('987654');
  await expect(page.getByLabel('Select account First account')).toBeChecked();await expect(page.getByLabel('Select account Second account')).not.toBeChecked();
 });
