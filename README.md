@@ -4,8 +4,8 @@
 
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
-[![Release](docs/assets/badges/release.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
-[![Downloads](docs/assets/badges/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+[![Release](https://img.shields.io/github/v/release/LancePerdue23/roblox-multi-instance?label=release&sort=semver&filter=v%2A)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+[![Downloads](https://img.shields.io/github/downloads/LancePerdue23/roblox-multi-instance/total)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 ![Windows](docs/assets/badges/windows.svg)
 ![Architecture](docs/assets/badges/architecture.svg)
 
