@@ -5,15 +5,13 @@
 A Windows workspace for launching, monitoring, and managing multiple Roblox clients.
 
 [![Release](https://img.shields.io/github/v/release/LancePerdue23/roblox-multi-instance?label=release&sort=semver&filter=v%2A)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
-[![Downloads](https://img.shields.io/github/downloads/LancePerdue23/roblox-multi-instance/total)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
+[![Downloads](https://lanceperdue23.github.io/roblox-multi-instance/downloads.svg)](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 ![Windows](docs/assets/badges/windows.svg)
 ![Architecture](docs/assets/badges/architecture.svg)
 
 **[Download App + Helper](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.2.0/RobloxMultiInstance-Setup.exe)** · [Helper only](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.2.0/RobloxLaunchHelper-Setup.exe) · [Portable ZIP](https://github.com/LancePerdue23/roblox-multi-instance/releases/download/v1.2.0/RobloxMultiInstance-Portable.zip) · [All releases](https://github.com/LancePerdue23/roblox-multi-instance/releases)
 
 </div>
-
-The Release badge shows the latest stable version; before the first stable release it reports no stable release. Downloads counts **all uploaded release assets** across published releases, including prereleases, installers, portable ZIPs, checksums and manifests. It excludes drafts and GitHub-generated source archives. Counts are requests, including repeats and updater/audit downloads, not unique users or installations; removed assets disappear from the total. Release and Downloads use live Shields.io badges, which refresh automatically from public GitHub data. The former GitHub Actions snapshot-refresh workflow is disabled; badge updates require no workflow runs or counter commits. GitHub/Shields caching can delay updates.
 
 ## Table of contents
 
