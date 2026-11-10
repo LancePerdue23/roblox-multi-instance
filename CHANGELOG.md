@@ -4,6 +4,7 @@
 
 ## 1.2.0 — unsigned validation prerelease
 
+- Ship only the new Ember, Orbit and Radiant supporter hearts, preserving saved motion and verified tiers. Archive Classic source outside the frontend and remove its picker, rendering and animation styles from release bundles.
 - Include the current account launch, background-client cleanup, startup/focus, tray and shortcut improvements, with fixed provider status codes and cleanup-failure recovery.
 - Ship redesigned supporter and recognition cosmetics, cumulative Robux pass credit, bounded resumable purchase verification, and cumulative USD checkout/receipt support. Stripe remains unavailable without a separately configured and validated service.
 - Connect opt-in technical error reporting to the owner's Cloudflare endpoint; preserve default-off consent, allowlisted counters and opt-out queue removal.

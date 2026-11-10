@@ -8,7 +8,6 @@
 .detailed-heart .sp-mark{width:32px;height:32px;flex:none;overflow:visible;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .tier-gallery .detailed-heart .sp-mark{width:52px;height:52px}
 .cosmetic-stage .detailed-heart{flex-direction:column;gap:12px}.cosmetic-stage .detailed-heart .sp-mark{width:144px;height:144px}
-.supporter-designs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}.supporter-designs button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft)}
 .support-link:has(.detailed-heart)::before,.support-link:has(.detailed-heart)::after,.support-link .detailed-heart::before,.support-link .detailed-heart::after{display:none!important}
 .support-link:has(.detailed-heart){background:var(--surface);border-color:var(--line);color:var(--text);box-shadow:none}
 .support-link .detailed-heart{padding:0}.support-link .detailed-heart>span{color:var(--text)}

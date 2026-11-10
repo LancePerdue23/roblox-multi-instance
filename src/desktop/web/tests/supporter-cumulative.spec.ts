@@ -25,7 +25,7 @@ test('verified cumulative top-up upgrades once and survives reopening without re
 });
 
 for(const viewport of [{width:1440,height:960},{width:1000,height:700},{width:800,height:600}])test(`detailed supporter aligns with column at ${viewport.width}x${viewport.height}`,async({page})=>{
- await page.setViewportSize(viewport);await installWorkspace(page);await page.goto('/?cumulative-support');await page.getByRole('button',{name:'Support development',exact:true}).click();await page.getByRole('button',{name:'Detailed hearts',exact:true}).click();
+ await page.setViewportSize(viewport);await installWorkspace(page);await page.goto('/?cumulative-support');await page.getByRole('button',{name:'Support development',exact:true}).click();
  const row=await page.locator('.sidebar-bottom>.sidebar-supporter').boundingBox();const nav=await page.locator('.sidebar nav').boundingBox();
  expect(row).toBeTruthy();expect(nav).toBeTruthy();expect(Math.abs(row!.x-nav!.x)).toBeLessThanOrEqual(1);expect(Math.abs(row!.width-nav!.width)).toBeLessThanOrEqual(1);expect(row!.height).toBe(44);
  if(await page.locator('.sidebar-regular').count())expect(await page.locator('.sidebar').evaluate(el=>el.scrollHeight<=el.clientHeight+1)).toBe(true);

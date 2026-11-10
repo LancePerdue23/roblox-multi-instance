@@ -5,6 +5,12 @@ test('normal build excludes supporter preview entry points and role-changing UI'
  test.skip(existsSync('dist/local-supporter-preview.json'),'Normal-build verification');
  const scripts=readdirSync('dist/assets').filter(file=>file.endsWith('.js')).map(file=>readFileSync('dist/assets/'+file,'utf8')).join('');
  expect(scripts).not.toContain('Local role preview');
+ expect(scripts).not.toContain('Classic hearts');
+ expect(scripts).not.toContain('heart-symbol');
+ const css=readdirSync('dist/assets').filter(file=>file.endsWith('.css')).map(file=>readFileSync('dist/assets/'+file,'utf8')).join('');
+ expect(css).not.toContain('heart-symbol');
+ expect(css).not.toContain('heart-palettes');
+ expect(css).not.toContain('super-sweep');
  expect(scripts).not.toContain('builtAt');
  expect(scripts).not.toContain('Local testing');
  expect(existsSync('dist/local-role-switcher.js')).toBe(false);
@@ -27,7 +33,7 @@ test('badge previews stay public while replay follows verified supporter status'
  await page.getByRole('button',{name:'Continue',exact:true}).click();
  for(const index of [1,2]){
   await page.locator('.tier-choice').nth(index).click();
-  await expect(page.locator('.cosmetic-stage .heart-badge')).toContainText(index===1?'Supporter+':'Super Supporter');
+  await expect(page.locator('.cosmetic-stage .heart-badge')).toHaveAttribute('aria-label',index===1?'Supporter+':'Super Supporter');
   await expect(page.getByRole('button',{name:/Replay .* unlock/})).toHaveCount(0);
   await expect(page.locator('.studio-options')).not.toContainText(/replay/i);
  }
