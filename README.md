@@ -13,7 +13,7 @@ A Windows workspace for launching, monitoring, and managing multiple Roblox clie
 
 </div>
 
-The Release badge shows the latest stable version; before the first stable release it reports no stable release. Downloads counts **all uploaded release assets** across published releases, including prereleases, installers, portable ZIPs, checksums and manifests. It excludes drafts and GitHub-generated source archives. Counts are requests, including repeats and updater/audit downloads, not unique users or installations; removed assets disappear from the total. While private, badges are snapshots refreshed on release changes or manual workflow runs. When made public, the existing workflow switches both to live Shields.io badges without scheduled counter commits. GitHub/Shields caching can delay updates.
+The Release badge shows the latest stable version; before the first stable release it reports no stable release. Downloads counts **all uploaded release assets** across published releases, including prereleases, installers, portable ZIPs, checksums and manifests. It excludes drafts and GitHub-generated source archives. Counts are requests, including repeats and updater/audit downloads, not unique users or installations; removed assets disappear from the total. Release and Downloads use live Shields.io badges, which refresh automatically from public GitHub data. The former GitHub Actions snapshot-refresh workflow is disabled; badge updates require no workflow runs or counter commits. GitHub/Shields caching can delay updates.
 
 ## Table of contents
 
